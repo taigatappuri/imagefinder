@@ -27,6 +27,8 @@ services:
       FRONTEND_BASE_URL: http://localhost:5173
       DATABASE_URL: postgres://imagefinder:imagefinder@db:5432/imagefinder?sslmode=disable
       DB_AUTO_MIGRATE: "true"
+      GO111MODULE: "on"
+      GOFLAGS: "-mod=mod"
       SESSION_SECRET: dev-secret
       SESSION_TTL: 168h
       TOKEN_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
@@ -54,6 +56,8 @@ services:
       FRONTEND_BASE_URL: http://localhost:5173
       DATABASE_URL: postgres://imagefinder:imagefinder@db:5432/imagefinder?sslmode=disable
       DB_AUTO_MIGRATE: "true"
+      GO111MODULE: "on"
+      GOFLAGS: "-mod=mod"
       SESSION_SECRET: dev-secret
       SESSION_TTL: 168h
       TOKEN_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
