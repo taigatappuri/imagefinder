@@ -198,6 +198,19 @@ cython_debug/
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
 #  refer to https://docs.cursor.com/context/ignore-files
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.env
+
+# Go / Backend
+backend/.env
+backend/bin/
+
+# Logs / OS
+*.log
+.DS_Store
 .cursorignore
 .cursorindexingignore
 

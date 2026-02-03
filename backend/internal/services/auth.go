@@ -1,0 +1,139 @@
+package services
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"imagefinder/internal/config"
+	"imagefinder/internal/store"
+)
+
+type AuthService struct {
+	Config config.Config
+	Store  *store.Store
+	Client *http.Client
+}
+
+func (s *AuthService) AuthURL(state string) (string, error) {
+	endpoint, err := url.Parse(s.Config.GoogleOAuthAuthURL)
+	if err != nil {
+		return "", err
+	}
+	query := endpoint.Query()
+	query.Set("client_id", s.Config.GoogleClientID)
+	query.Set("redirect_uri", s.Config.GoogleRedirectURL)
+	query.Set("response_type", "code")
+	query.Set("scope", strings.Join(s.Config.GoogleOAuthScopes, " "))
+	query.Set("access_type", "offline")
+	query.Set("prompt", "consent")
+	query.Set("state", state)
+	endpoint.RawQuery = query.Encode()
+	return endpoint.String(), nil
+}
+
+func (s *AuthService) ExchangeCode(ctx context.Context, code string) (tokenResponse, error) {
+	values := url.Values{}
+	values.Set("code", code)
+	values.Set("client_id", s.Config.GoogleClientID)
+	values.Set("client_secret", s.Config.GoogleClientSecret)
+	values.Set("redirect_uri", s.Config.GoogleRedirectURL)
+	values.Set("grant_type", "authorization_code")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.Config.GoogleOAuthTokenURL, strings.NewReader(values.Encode()))
+	if err != nil {
+		return tokenResponse{}, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return tokenResponse{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return tokenResponse{}, fmt.Errorf("トークン交換エラー: %s", resp.Status)
+	}
+	var token tokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
+		return tokenResponse{}, err
+	}
+	return token, nil
+}
+
+func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (tokenResponse, error) {
+	values := url.Values{}
+	values.Set("refresh_token", refreshToken)
+	values.Set("client_id", s.Config.GoogleClientID)
+	values.Set("client_secret", s.Config.GoogleClientSecret)
+	values.Set("grant_type", "refresh_token")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.Config.GoogleOAuthTokenURL, strings.NewReader(values.Encode()))
+	if err != nil {
+		return tokenResponse{}, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return tokenResponse{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return tokenResponse{}, fmt.Errorf("トークン更新エラー: %s", resp.Status)
+	}
+	var token tokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
+		return tokenResponse{}, err
+	}
+	return token, nil
+}
+
+func (s *AuthService) FetchUserInfo(ctx context.Context, accessToken string) (userInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.Config.GoogleUserInfoURL, nil)
+	if err != nil {
+		return userInfo{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return userInfo{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return userInfo{}, fmt.Errorf("ユーザー情報取得エラー: %s", resp.Status)
+	}
+	var info userInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return userInfo{}, err
+	}
+	return info, nil
+}
+
+type tokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+	Scope        string `json:"scope"`
+	TokenType    string `json:"token_type"`
+	IDToken      string `json:"id_token"`
+}
+
+func (t tokenResponse) ExpiresAt() time.Time {
+	return time.Now().Add(time.Duration(t.ExpiresIn) * time.Second)
+}
+
+type userInfo struct {
+	Sub   string `json:"sub"`
+	ID    string `json:"id"`
+	Email string `json:"email"`
+}
+
+func (u userInfo) GoogleID() string {
+	if u.Sub != "" {
+		return u.Sub
+	}
+	return u.ID
+}
