@@ -39,6 +39,7 @@ func NewServer(cfg config.Config, store *store.Store, auth *services.AuthService
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
+	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/auth/google", s.handleAuthGoogle)
 	mux.HandleFunc("/auth/callback", s.handleAuthCallback)
 	mux.HandleFunc("/auth/logout", s.handleAuthLogout)
@@ -55,6 +56,19 @@ func NewServer(cfg config.Config, store *store.Store, auth *services.AuthService
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET のみ対応しています")
+		return
+	}
+	mode := s.Config.GooglePhotosMode
+	writeJSON(w, http.StatusOK, map[string]any{
+		"google_photos_mode": mode,
+		"indexing_available": mode != "picker",
+		"picker_available":   mode == "picker",
+	})
 }
 
 func (s *Server) handleAuthGoogle(w http.ResponseWriter, r *http.Request) {

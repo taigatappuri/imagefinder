@@ -28,6 +28,12 @@ type PickerSessionResponse = {
   polling_config?: PickerPollingConfig | null
 }
 
+type AppConfig = {
+  google_photos_mode?: string
+  indexing_available?: boolean
+  picker_available?: boolean
+}
+
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false)
   const [checkingAuth, setCheckingAuth] = useState(true)
@@ -45,8 +51,11 @@ export default function App() {
   const [pickerSession, setPickerSession] = useState<PickerSessionResponse | null>(null)
   const [pickerStatus, setPickerStatus] = useState('')
   const [importingPicker, setImportingPicker] = useState(false)
+  const [appConfig, setAppConfig] = useState<AppConfig | null>(null)
 
   const hasResults = results.length > 0
+  const isPickerMode =
+    appConfig?.google_photos_mode === 'picker' || Boolean(appConfig?.picker_available)
 
   const jobLabel = useMemo(() => {
     if (!job) return 'まだジョブはありません'
@@ -73,7 +82,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!authenticated) return
+    if (!authenticated || isPickerMode) return
     const timer = setInterval(async () => {
       try {
         const res = await fetch(`${API_BASE}/index/status`, { credentials: 'include' })
@@ -84,7 +93,21 @@ export default function App() {
       }
     }, 3000)
     return () => clearInterval(timer)
-  }, [authenticated])
+  }, [authenticated, isPickerMode])
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/config`)
+        if (!res.ok) return
+        const data = await res.json()
+        setAppConfig(data)
+      } catch {
+        return
+      }
+    }
+    fetchConfig()
+  }, [])
 
   useEffect(() => {
     if (results.length === 0) return
@@ -139,6 +162,10 @@ export default function App() {
   }
 
   const startIndex = async () => {
+    if (isPickerMode) {
+      setStatusMessage('Picker モードではインデックス更新は利用できません。下の「写真を選択する」から取り込みしてください。')
+      return
+    }
     setStatusMessage('インデックス作成を開始します')
     try {
       const res = await fetch(`${API_BASE}/index/update`, {
@@ -317,14 +344,22 @@ export default function App() {
           <p>Google Photos の情報を取得し、検索用に準備します。</p>
         </div>
         <div className="panel-body">
-          <button className="secondary" onClick={startIndex} disabled={!authenticated}>
-            インデックスを開始
-          </button>
-          <div className="job-status">
-            <span>進捗:</span>
-            <strong>{jobLabel}</strong>
-            {job?.error_message ? <span className="error">{job.error_message}</span> : null}
-          </div>
+          {isPickerMode ? (
+            <div className="status">
+              Picker モードのため全件インデックス更新は利用できません。下の「写真を選択する」から取り込みしてください。
+            </div>
+          ) : (
+            <>
+              <button className="secondary" onClick={startIndex} disabled={!authenticated}>
+                インデックスを開始
+              </button>
+              <div className="job-status">
+                <span>進捗:</span>
+                <strong>{jobLabel}</strong>
+                {job?.error_message ? <span className="error">{job.error_message}</span> : null}
+              </div>
+            </>
+          )}
         </div>
       </section>
 
