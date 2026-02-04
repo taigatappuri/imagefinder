@@ -103,6 +103,8 @@ func getEnv(key, def string) string {
 
 func splitEnv(key, def string) []string {
 	value := getEnv(key, def)
+	value = strings.Trim(value, "\"")
+	value = strings.Trim(value, "'")
 	parts := strings.Fields(value)
 	if len(parts) == 0 {
 		return []string{}
