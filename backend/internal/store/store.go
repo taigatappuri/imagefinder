@@ -224,19 +224,55 @@ func (s *Store) SearchPhotos(ctx context.Context, userID uuid.UUID, embedding []
 	query += fmt.Sprintf(" ORDER BY embedding <=> $1 LIMIT $%d", index)
 	args = append(args, limit)
 
-	rows, err := s.DB.Query(ctx, query, args...)
+	fetch := func(ctx context.Context, q string, qargs []any, qer interface {
+		Query(context.Context, string, ...any) (pgx.Rows, error)
+	}) ([]SearchResult, error) {
+		rows, err := qer.Query(ctx, q, qargs...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		results := []SearchResult{}
+		for rows.Next() {
+			var item SearchResult
+			if err := rows.Scan(&item.ID, &item.BaseURL, &item.CreatedAt, &item.Location, &item.Score); err != nil {
+				return nil, err
+			}
+			results = append(results, item)
+		}
+		return results, rows.Err()
+	}
+
+	results, err := fetch(ctx, query, args, s.DB)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	results := []SearchResult{}
-	for rows.Next() {
-		var item SearchResult
-		if err := rows.Scan(&item.ID, &item.BaseURL, &item.CreatedAt, &item.Location, &item.Score); err != nil {
-			return nil, err
-		}
-		results = append(results, item)
+	if len(results) > 0 {
+		return results, nil
 	}
-	return results, rows.Err()
+
+	tx, err := s.DB.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return results, nil
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL enable_indexscan=off"); err != nil {
+		return results, nil
+	}
+	if _, err := tx.Exec(ctx, "SET LOCAL enable_bitmapscan=off"); err != nil {
+		return results, nil
+	}
+	if _, err := tx.Exec(ctx, "SET LOCAL enable_indexonlyscan=off"); err != nil {
+		return results, nil
+	}
+	results, err = fetch(ctx, query, args, tx)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return results, nil
+	}
+	return results, nil
 }
