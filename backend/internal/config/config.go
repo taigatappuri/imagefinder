@@ -72,11 +72,11 @@ func Load() Config {
 		GooglePhotosPickerBase: getEnv("GOOGLE_PHOTOS_PICKER_BASE", "https://photospicker.googleapis.com/v1"),
 		GooglePhotosMode:       getEnv("GOOGLE_PHOTOS_MODE", "picker"),
 		GooglePhotosPageSize:   getEnvInt("GOOGLE_PHOTOS_PAGE_SIZE", 50),
-		GeminiMode:             getEnv("GEMINI_MODE", "mock"),
+		GeminiMode:             normalizeMode(getEnv("GEMINI_MODE", "mock")),
 		GeminiAPIKey:           getEnv("GEMINI_API_KEY", ""),
 		GeminiAPIEndpoint:      getEnv("GEMINI_API_ENDPOINT", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"),
 		GeminiModel:            getEnv("GEMINI_MODEL", "gemini-2.5-flash"),
-		OpenAIMode:             getEnv("OPENAI_MODE", "mock"),
+		OpenAIMode:             normalizeMode(getEnv("OPENAI_MODE", "mock")),
 		OpenAIAPIKey:           getEnv("OPENAI_API_KEY", ""),
 		OpenAIAPIEndpoint:      getEnv("OPENAI_API_ENDPOINT", "https://api.openai.com/v1/embeddings"),
 		OpenAIModel:            getEnv("OPENAI_MODEL", "text-embedding-3-small"),
@@ -90,6 +90,21 @@ func Load() Config {
 		JobPollInterval:        getEnvDuration("JOB_POLL_INTERVAL", 3*time.Second),
 		CookieSecure:           getEnvBool("COOKIE_SECURE", false),
 		AllowedCORSOrigins:     splitEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173"),
+	}
+}
+
+func normalizeMode(value string) string {
+	mode := strings.ToLower(strings.TrimSpace(value))
+	if mode == "" {
+		return "mock"
+	}
+	switch mode {
+	case "real", "api":
+		return "api"
+	case "mock":
+		return "mock"
+	default:
+		return mode
 	}
 }
 
