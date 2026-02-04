@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"imagefinder/internal/config"
+	"imagefinder/internal/retry"
 	"imagefinder/internal/store"
 )
 
@@ -44,21 +45,30 @@ func (s *AuthService) ExchangeCode(ctx context.Context, code string) (tokenRespo
 	values.Set("redirect_uri", s.Config.GoogleRedirectURL)
 	values.Set("grant_type", "authorization_code")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.Config.GoogleOAuthTokenURL, strings.NewReader(values.Encode()))
-	if err != nil {
-		return tokenResponse{}, err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := s.Client.Do(req)
-	if err != nil {
-		return tokenResponse{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return tokenResponse{}, fmt.Errorf("トークン交換エラー: %s", resp.Status)
-	}
 	var token tokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
+	err := retry.Do(ctx, s.Config.ExternalAPIRetryMax, s.Config.ExternalAPIRetryDelay, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.Config.GoogleOAuthTokenURL, strings.NewReader(values.Encode()))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := s.Client.Do(req)
+		if err != nil {
+			return retry.MarkRetryable(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return retry.MarkRetryable(fmt.Errorf("トークン交換エラー: %s", resp.Status))
+		}
+		if resp.StatusCode >= 300 {
+			return fmt.Errorf("トークン交換エラー: %s", resp.Status)
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return tokenResponse{}, err
 	}
 	return token, nil
@@ -71,42 +81,60 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (to
 	values.Set("client_secret", s.Config.GoogleClientSecret)
 	values.Set("grant_type", "refresh_token")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.Config.GoogleOAuthTokenURL, strings.NewReader(values.Encode()))
-	if err != nil {
-		return tokenResponse{}, err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := s.Client.Do(req)
-	if err != nil {
-		return tokenResponse{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return tokenResponse{}, fmt.Errorf("トークン更新エラー: %s", resp.Status)
-	}
 	var token tokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
+	err := retry.Do(ctx, s.Config.ExternalAPIRetryMax, s.Config.ExternalAPIRetryDelay, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.Config.GoogleOAuthTokenURL, strings.NewReader(values.Encode()))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := s.Client.Do(req)
+		if err != nil {
+			return retry.MarkRetryable(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return retry.MarkRetryable(fmt.Errorf("トークン更新エラー: %s", resp.Status))
+		}
+		if resp.StatusCode >= 300 {
+			return fmt.Errorf("トークン更新エラー: %s", resp.Status)
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return tokenResponse{}, err
 	}
 	return token, nil
 }
 
 func (s *AuthService) FetchUserInfo(ctx context.Context, accessToken string) (userInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.Config.GoogleUserInfoURL, nil)
-	if err != nil {
-		return userInfo{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	resp, err := s.Client.Do(req)
-	if err != nil {
-		return userInfo{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return userInfo{}, fmt.Errorf("ユーザー情報取得エラー: %s", resp.Status)
-	}
 	var info userInfo
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+	err := retry.Do(ctx, s.Config.ExternalAPIRetryMax, s.Config.ExternalAPIRetryDelay, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.Config.GoogleUserInfoURL, nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		resp, err := s.Client.Do(req)
+		if err != nil {
+			return retry.MarkRetryable(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return retry.MarkRetryable(fmt.Errorf("ユーザー情報取得エラー: %s", resp.Status))
+		}
+		if resp.StatusCode >= 300 {
+			return fmt.Errorf("ユーザー情報取得エラー: %s", resp.Status)
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return userInfo{}, err
 	}
 	return info, nil

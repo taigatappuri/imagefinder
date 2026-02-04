@@ -37,47 +37,53 @@ func main() {
 		}
 	}
 
-	var cipher *security.Cipher
-	if cfg.TokenEncryptionKey != "" {
-		cipher, err = security.NewCipherFromBase64(cfg.TokenEncryptionKey)
+	var encryptor security.Encryptor
+	if cfg.KMSKeyID != "" {
+		encryptor, err = security.NewKMSEncryptor(cfg.KMSKeyID, cfg.AWSRegion)
+		if err != nil {
+			log.Fatalf("KMS 暗号化の初期化に失敗: %v", err)
+		}
+	} else if cfg.TokenEncryptionKey != "" {
+		encryptor, err = security.NewCipherFromBase64(cfg.TokenEncryptionKey)
 		if err != nil {
 			log.Fatalf("暗号化キーの読み込みに失敗: %v", err)
 		}
 	}
 
-	store := &store.Store{DB: pool, Cipher: cipher}
+	store := &store.Store{DB: pool, Encryptor: encryptor}
 	client := &http.Client{Timeout: 30 * time.Second}
-	
+
 	authService := &services.AuthService{Config: cfg, Store: store, Client: client}
 
 	var photosClient providers.GooglePhotosClient
 	if cfg.GoogleClientID != "" {
-		photosClient = &providers.HTTPGooglePhotosClient{BaseURL: cfg.GooglePhotosAPIBase, Client: client}
+		photosClient = &providers.HTTPGooglePhotosClient{BaseURL: cfg.GooglePhotosAPIBase, Client: client, RetryMax: cfg.ExternalAPIRetryMax, RetryDelay: cfg.ExternalAPIRetryDelay}
 	} else {
 		photosClient = &providers.MockGooglePhotosClient{Items: mockPhotos()}
 	}
 
 	var captioner providers.Captioner
 	if cfg.GeminiMode == "api" {
-		captioner = &providers.GeminiCaptioner{Endpoint: cfg.GeminiAPIEndpoint, APIKey: cfg.GeminiAPIKey, Client: client}
+		captioner = &providers.GeminiCaptioner{Endpoint: cfg.GeminiAPIEndpoint, APIKey: cfg.GeminiAPIKey, Client: client, RetryMax: cfg.ExternalAPIRetryMax, RetryDelay: cfg.ExternalAPIRetryDelay}
 	} else {
 		captioner = &providers.MockCaptioner{}
 	}
 
 	var embedder providers.Embedder
 	if cfg.OpenAIMode == "api" {
-		embedder = &providers.OpenAIEmbedder{Endpoint: cfg.OpenAIAPIEndpoint, APIKey: cfg.OpenAIAPIKey, Model: cfg.OpenAIModel, Client: client}
+		embedder = &providers.OpenAIEmbedder{Endpoint: cfg.OpenAIAPIEndpoint, APIKey: cfg.OpenAIAPIKey, Model: cfg.OpenAIModel, Client: client, RetryMax: cfg.ExternalAPIRetryMax, RetryDelay: cfg.ExternalAPIRetryDelay}
 	} else {
 		embedder = &providers.MockEmbedder{Dim: cfg.EmbeddingDim}
 	}
 
 	indexer := &services.Indexer{
-		Store:       store,
-		Photos:      photosClient,
-		Captioner:   captioner,
-		Embedder:    embedder,
-		AuthService: authService,
-		PageSize:    cfg.GooglePhotosPageSize,
+		Store:         store,
+		Photos:        photosClient,
+		Captioner:     captioner,
+		Embedder:      embedder,
+		AuthService:   authService,
+		PageSize:      cfg.GooglePhotosPageSize,
+		MaxTextLength: cfg.MaxEmbeddingTextLength,
 	}
 
 	stop := make(chan os.Signal, 1)

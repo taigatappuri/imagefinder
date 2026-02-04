@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"imagefinder/internal/retry"
 )
 
 type MediaItem struct {
@@ -22,8 +24,10 @@ type GooglePhotosClient interface {
 }
 
 type HTTPGooglePhotosClient struct {
-	BaseURL string
-	Client  *http.Client
+	BaseURL    string
+	Client     *http.Client
+	RetryMax   int
+	RetryDelay time.Duration
 }
 
 func (c *HTTPGooglePhotosClient) ListMediaItems(ctx context.Context, accessToken string, pageSize int, pageToken string) ([]MediaItem, string, error) {
@@ -40,22 +44,8 @@ func (c *HTTPGooglePhotosClient) ListMediaItems(ctx context.Context, accessToken
 	}
 	endpoint.RawQuery = query.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
-	if err != nil {
-		return nil, "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := c.Client.Do(req)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return nil, "", fmt.Errorf("Google Photos API エラー: %s", resp.Status)
-	}
 	var payload struct {
-		MediaItems    []struct {
+		MediaItems []struct {
 			ID            string `json:"id"`
 			BaseURL       string `json:"baseUrl"`
 			MimeType      string `json:"mimeType"`
@@ -69,7 +59,31 @@ func (c *HTTPGooglePhotosClient) ListMediaItems(ctx context.Context, accessToken
 		} `json:"mediaItems"`
 		NextPageToken string `json:"nextPageToken"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+
+	err = retry.Do(ctx, c.RetryMax, c.RetryDelay, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+
+		resp, err := c.Client.Do(req)
+		if err != nil {
+			return retry.MarkRetryable(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return retry.MarkRetryable(fmt.Errorf("Google Photos API エラー: %s", resp.Status))
+		}
+		if resp.StatusCode >= 300 {
+			return fmt.Errorf("Google Photos API エラー: %s", resp.Status)
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, "", err
 	}
 

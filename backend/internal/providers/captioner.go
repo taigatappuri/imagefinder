@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"imagefinder/internal/retry"
 )
 
 type CaptionInput struct {
@@ -29,7 +31,7 @@ type Captioner interface {
 	Caption(ctx context.Context, input CaptionInput) (CaptionResult, error)
 }
 
-type MockCaptioner struct {}
+type MockCaptioner struct{}
 
 func (m *MockCaptioner) Caption(ctx context.Context, input CaptionInput) (CaptionResult, error) {
 	pieces := []string{}
@@ -47,9 +49,11 @@ func (m *MockCaptioner) Caption(ctx context.Context, input CaptionInput) (Captio
 }
 
 type GeminiCaptioner struct {
-	Endpoint string
-	APIKey   string
-	Client   *http.Client
+	Endpoint   string
+	APIKey     string
+	Client     *http.Client
+	RetryMax   int
+	RetryDelay time.Duration
 }
 
 func (g *GeminiCaptioner) Caption(ctx context.Context, input CaptionInput) (CaptionResult, error) {
@@ -80,19 +84,6 @@ func (g *GeminiCaptioner) Caption(ctx context.Context, input CaptionInput) (Capt
 			endpoint += "?key=" + g.APIKey
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return CaptionResult{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := g.Client.Do(req)
-	if err != nil {
-		return CaptionResult{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return CaptionResult{}, fmt.Errorf("Gemini API エラー: %s", resp.Status)
-	}
 	var response struct {
 		Candidates []struct {
 			Content struct {
@@ -102,7 +93,29 @@ func (g *GeminiCaptioner) Caption(ctx context.Context, input CaptionInput) (Capt
 			} `json:"content"`
 		} `json:"candidates"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+	err = retry.Do(ctx, g.RetryMax, g.RetryDelay, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := g.Client.Do(req)
+		if err != nil {
+			return retry.MarkRetryable(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return retry.MarkRetryable(fmt.Errorf("Gemini API エラー: %s", resp.Status))
+		}
+		if resp.StatusCode >= 300 {
+			return fmt.Errorf("Gemini API エラー: %s", resp.Status)
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return CaptionResult{}, err
 	}
 	if len(response.Candidates) == 0 || len(response.Candidates[0].Content.Parts) == 0 {

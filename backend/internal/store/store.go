@@ -17,8 +17,8 @@ import (
 )
 
 type Store struct {
-	DB     *pgxpool.Pool
-	Cipher *security.Cipher
+	DB        *pgxpool.Pool
+	Encryptor security.Encryptor
 }
 
 func (s *Store) UpsertUser(ctx context.Context, googleUserID, email string) (uuid.UUID, error) {
@@ -38,14 +38,14 @@ func (s *Store) UpsertUser(ctx context.Context, googleUserID, email string) (uui
 
 func (s *Store) SaveTokens(ctx context.Context, userID uuid.UUID, accessToken, refreshToken string, expiresAt time.Time, scopes string) error {
 	encAccess, encRefresh := accessToken, refreshToken
-	if s.Cipher != nil {
+	if s.Encryptor != nil {
 		var err error
-		encAccess, err = s.Cipher.Encrypt(accessToken)
+		encAccess, err = s.Encryptor.Encrypt(accessToken)
 		if err != nil {
 			return err
 		}
 		if refreshToken != "" {
-			encRefresh, err = s.Cipher.Encrypt(refreshToken)
+			encRefresh, err = s.Encryptor.Encrypt(refreshToken)
 			if err != nil {
 				return err
 			}
@@ -68,14 +68,14 @@ func (s *Store) GetTokens(ctx context.Context, userID uuid.UUID) (models.OAuthTo
 	if err := row.Scan(&accessToken, &refreshToken, &token.ExpiresAt, &token.Scopes); err != nil {
 		return token, err
 	}
-	if s.Cipher != nil {
+	if s.Encryptor != nil {
 		var err error
-		accessToken, err = s.Cipher.Decrypt(accessToken)
+		accessToken, err = s.Encryptor.Decrypt(accessToken)
 		if err != nil {
 			return token, err
 		}
 		if refreshToken != "" {
-			refreshToken, err = s.Cipher.Decrypt(refreshToken)
+			refreshToken, err = s.Encryptor.Decrypt(refreshToken)
 			if err != nil {
 				return token, err
 			}
@@ -120,6 +120,12 @@ ORDER BY created_at DESC
 LIMIT 1`, userID)
 	err := row.Scan(&job.ID, &job.UserID, &job.Type, &job.Status, &job.Progress, &job.StartedAt, &job.FinishedAt, &job.ErrorMessage, &job.CreatedAt)
 	return job, err
+}
+
+func (s *Store) HasActiveJob(ctx context.Context, userID uuid.UUID) (bool, error) {
+	var exists bool
+	err := s.DB.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM jobs WHERE user_id=$1 AND status IN ('queued','running'))", userID).Scan(&exists)
+	return exists, err
 }
 
 func (s *Store) AcquireNextJob(ctx context.Context) (models.Job, error) {

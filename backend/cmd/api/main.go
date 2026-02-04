@@ -33,23 +33,28 @@ func main() {
 		}
 	}
 
-	var cipher *security.Cipher
-	if cfg.TokenEncryptionKey != "" {
-		cipher, err = security.NewCipherFromBase64(cfg.TokenEncryptionKey)
+	var encryptor security.Encryptor
+	if cfg.KMSKeyID != "" {
+		encryptor, err = security.NewKMSEncryptor(cfg.KMSKeyID, cfg.AWSRegion)
+		if err != nil {
+			log.Fatalf("KMS 暗号化の初期化に失敗: %v", err)
+		}
+	} else if cfg.TokenEncryptionKey != "" {
+		encryptor, err = security.NewCipherFromBase64(cfg.TokenEncryptionKey)
 		if err != nil {
 			log.Fatalf("暗号化キーの読み込みに失敗: %v", err)
 		}
 	}
 
-	store := &store.Store{DB: pool, Cipher: cipher}
+	store := &store.Store{DB: pool, Encryptor: encryptor}
 	session := security.NewSessionManager(cfg.SessionSecret, cfg.SessionTTL, cfg.CookieSecure)
 	client := &http.Client{Timeout: 20 * time.Second}
-	
+
 	authService := &services.AuthService{Config: cfg, Store: store, Client: client}
 
 	var embedder providers.Embedder
 	if cfg.OpenAIMode == "api" {
-		embedder = &providers.OpenAIEmbedder{Endpoint: cfg.OpenAIAPIEndpoint, APIKey: cfg.OpenAIAPIKey, Model: cfg.OpenAIModel, Client: client}
+		embedder = &providers.OpenAIEmbedder{Endpoint: cfg.OpenAIAPIEndpoint, APIKey: cfg.OpenAIAPIKey, Model: cfg.OpenAIModel, Client: client, RetryMax: cfg.ExternalAPIRetryMax, RetryDelay: cfg.ExternalAPIRetryDelay}
 	} else {
 		embedder = &providers.MockEmbedder{Dim: cfg.EmbeddingDim}
 	}

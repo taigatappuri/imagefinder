@@ -14,12 +14,13 @@ import (
 )
 
 type Indexer struct {
-	Store       *store.Store
-	Photos      providers.GooglePhotosClient
-	Captioner   providers.Captioner
-	Embedder    providers.Embedder
-	AuthService *AuthService
-	PageSize    int
+	Store         *store.Store
+	Photos        providers.GooglePhotosClient
+	Captioner     providers.Captioner
+	Embedder      providers.Embedder
+	AuthService   *AuthService
+	PageSize      int
+	MaxTextLength int
 }
 
 func (i *Indexer) Run(ctx context.Context, job models.Job) error {
@@ -27,7 +28,7 @@ func (i *Indexer) Run(ctx context.Context, job models.Job) error {
 	if err != nil {
 		return err
 	}
-	if time.Now().After(tokens.ExpiresAt.Add(-1 * time.Minute)) && tokens.RefreshToken != "" {
+	if time.Now().After(tokens.ExpiresAt.Add(-1*time.Minute)) && tokens.RefreshToken != "" {
 		refreshed, err := i.AuthService.RefreshToken(ctx, tokens.RefreshToken)
 		if err != nil {
 			return err
@@ -73,7 +74,8 @@ func (i *Indexer) Run(ctx context.Context, job models.Job) error {
 				return err
 			}
 			finalCaption := buildCaption(caption.Caption, item.CreatedTime, item.Location, caption.Labels)
-			embedding, err := i.Embedder.EmbedText(ctx, finalCaption)
+			trimmedCaption := truncateText(finalCaption, i.MaxTextLength)
+			embedding, err := i.Embedder.EmbedText(ctx, trimmedCaption)
 			if err != nil {
 				return err
 			}
@@ -85,7 +87,7 @@ func (i *Indexer) Run(ctx context.Context, job models.Job) error {
 				CreatedTime:   item.CreatedTime,
 				Location:      item.Location,
 				PeopleCount:   &caption.PeopleCount,
-				Caption:       &finalCaption,
+				Caption:       &trimmedCaption,
 				Embedding:     pgvector.NewVector(embedding),
 				IndexedAt:     time.Now(),
 			}
@@ -127,4 +129,15 @@ func buildCaption(base string, createdTime *time.Time, location *string, labels 
 		return "写真の説明"
 	}
 	return strings.Join(pieces, " ")
+}
+
+func truncateText(text string, maxLength int) string {
+	if maxLength <= 0 {
+		return text
+	}
+	runes := []rune(text)
+	if len(runes) <= maxLength {
+		return text
+	}
+	return string(runes[:maxLength])
 }

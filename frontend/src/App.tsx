@@ -29,6 +29,7 @@ export default function App() {
   const [results, setResults] = useState<SearchItem[]>([])
   const [statusMessage, setStatusMessage] = useState('')
   const [loadingSearch, setLoadingSearch] = useState(false)
+  const [showScore, setShowScore] = useState(true)
 
   const hasResults = results.length > 0
 
@@ -202,6 +203,16 @@ export default function App() {
               onChange={(event) => setLimit(Number(event.target.value))}
             />
           </div>
+          <div className="field toggle">
+            <label>スコア表示</label>
+            <button
+              type="button"
+              className={showScore ? 'toggle-button active' : 'toggle-button'}
+              onClick={() => setShowScore((prev) => !prev)}
+            >
+              {showScore ? '表示中' : '非表示'}
+            </button>
+          </div>
           <button className="primary" onClick={runSearch} disabled={!authenticated || loadingSearch}>
             {loadingSearch ? '検索中...' : '検索する'}
           </button>
@@ -230,10 +241,12 @@ export default function App() {
                           <img src={thumbUrl} alt="search result" loading="lazy" />
                         </div>
                         <div className="meta">
-                          <div>
-                            <span className="label">スコア</span>
-                            <strong>{item.score.toFixed(3)}</strong>
-                          </div>
+                          {showScore ? (
+                            <div>
+                              <span className="label">スコア</span>
+                              <strong>{item.score.toFixed(3)}</strong>
+                            </div>
+                          ) : null}
                           <div>
                             <span className="label">日時</span>
                             <span>{item.created_time ? item.created_time.slice(0, 10) : '-'}</span>

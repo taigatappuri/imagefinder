@@ -35,14 +35,14 @@ type Job struct {
 }
 
 type Photo struct {
-	ID            uuid.UUID      `json:"id"`
-	UserID        uuid.UUID      `json:"user_id"`
-	GoogleMediaID string         `json:"google_media_id"`
-	BaseURL       string         `json:"base_url"`
-	CreatedTime   *time.Time     `json:"created_time"`
-	Location      *string        `json:"location"`
-	PeopleCount   *int           `json:"people_count"`
-	Caption       *string        `json:"caption"`
+	ID            uuid.UUID       `json:"id"`
+	UserID        uuid.UUID       `json:"user_id"`
+	GoogleMediaID string          `json:"google_media_id"`
+	BaseURL       string          `json:"base_url"`
+	CreatedTime   *time.Time      `json:"created_time"`
+	Location      *string         `json:"location"`
+	PeopleCount   *int            `json:"people_count"`
+	Caption       *string         `json:"caption"`
 	Embedding     pgvector.Vector `json:"embedding"`
-	IndexedAt     time.Time      `json:"indexed_at"`
+	IndexedAt     time.Time       `json:"indexed_at"`
 }

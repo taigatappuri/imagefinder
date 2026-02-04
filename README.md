@@ -7,6 +7,7 @@ Google Photos の写真を自然言語で検索するための MVP です。バ�
 - `backend/`: API サーバとワーカー
 - `frontend/`: React + TypeScript UI
 - `infra/`: ローカル開発用の Postgres + pgvector
+- `docs/`: API 仕様や運用メモ
 
 ## ローカル起動
 
@@ -70,6 +71,17 @@ npm run dev
 ## モックモード
 
 `OPENAI_MODE=mock` と `GEMINI_MODE=mock` が既定です。Google OAuth を未設定のままでも、開発環境では `/auth/google` が開発用ユーザーでログインし、ワーカーはモック写真を使ってインデックスを作成します。実際の Google Photos 連携を行う場合は `GOOGLE_OAUTH_CLIENT_ID` などを設定してください。
+
+## データ保持方針
+
+- 画像本体は保存せず、参照 URL のみ保持します。
+
+## ドキュメント
+
+- `docs/api.md`: API 仕様
+- `docs/oauth_setup.md`: Google OAuth 設定手順
+- `docs/operations.md`: 運用・監視メモ
+- `docs/deploy.md`: デプロイ手順（概要）
 
 ## API
 

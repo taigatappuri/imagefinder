@@ -3,6 +3,7 @@ package httpserver
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -18,11 +19,11 @@ import (
 )
 
 type Server struct {
-	Config   config.Config
-	Store    *store.Store
-	Auth     *services.AuthService
-	Search   *services.SearchService
-	Session  *security.SessionManager
+	Config  config.Config
+	Store   *store.Store
+	Auth    *services.AuthService
+	Search  *services.SearchService
+	Session *security.SessionManager
 }
 
 func NewServer(cfg config.Config, store *store.Store, auth *services.AuthService, search *services.SearchService, session *security.SessionManager) http.Handler {
@@ -43,7 +44,7 @@ func NewServer(cfg config.Config, store *store.Store, auth *services.AuthService
 	mux.HandleFunc("/index/status", s.handleIndexStatus)
 	mux.HandleFunc("/search", s.handleSearch)
 	mux.HandleFunc("/photos/", s.handlePhotoDetail)
-	return s.withCORS(mux)
+	return s.withCORS(s.withLogging(mux))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +153,15 @@ func (s *Server) handleIndexUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "認証が必要です")
 		return
 	}
+	active, err := s.Store.HasActiveJob(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "ジョブ状態の確認に失敗しました")
+		return
+	}
+	if active {
+		writeError(w, http.StatusConflict, "進行中のジョブがあります")
+		return
+	}
 	jobID, err := s.Store.CreateJob(r.Context(), userID, jobs.TypeIndex)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "ジョブ作成に失敗しました")
@@ -201,20 +211,47 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "入力が不正です")
 		return
 	}
+	query := strings.TrimSpace(payload.Query)
+	if query == "" {
+		writeError(w, http.StatusBadRequest, "検索クエリが空です")
+		return
+	}
+	if s.Config.MaxQueryLength > 0 && len([]rune(query)) > s.Config.MaxQueryLength {
+		writeError(w, http.StatusBadRequest, "検索クエリが長すぎます")
+		return
+	}
+	if payload.Limit <= 0 {
+		writeError(w, http.StatusBadRequest, "limit は 1 以上にしてください")
+		return
+	}
+	if s.Config.MaxSearchLimit > 0 && payload.Limit > s.Config.MaxSearchLimit {
+		writeError(w, http.StatusBadRequest, "limit が上限を超えています")
+		return
+	}
+	if s.Config.MaxLocationLength > 0 && len([]rune(strings.TrimSpace(payload.Filters.Location))) > s.Config.MaxLocationLength {
+		writeError(w, http.StatusBadRequest, "場所フィルタが長すぎます")
+		return
+	}
 	var fromPtr *time.Time
 	if payload.Filters.From != "" {
-		if parsed, err := time.Parse("2006-01-02", payload.Filters.From); err == nil {
-			fromPtr = &parsed
+		parsed, err := time.Parse("2006-01-02", payload.Filters.From)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "開始日の形式が不正です")
+			return
 		}
+		fromPtr = &parsed
 	}
 	var toPtr *time.Time
 	if payload.Filters.To != "" {
-		if parsed, err := time.Parse("2006-01-02", payload.Filters.To); err == nil {
-			toPtr = &parsed
+		parsed, err := time.Parse("2006-01-02", payload.Filters.To)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "終了日の形式が不正です")
+			return
 		}
+		toPtr = &parsed
 	}
 	output, err := s.Search.Search(r.Context(), userID, services.SearchInput{
-		Query:    payload.Query,
+		Query:    query,
 		Limit:    payload.Limit,
 		From:     fromPtr,
 		To:       toPtr,
@@ -290,6 +327,32 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) withLogging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Header.Get("X-Request-ID")
+		if requestID == "" {
+			requestID = uuid.NewString()
+			r.Header.Set("X-Request-ID", requestID)
+		}
+		w.Header().Set("X-Request-ID", requestID)
+		start := time.Now()
+		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+		duration := time.Since(start)
+		log.Printf("{\"request_id\":\"%s\",\"method\":\"%s\",\"path\":\"%s\",\"status\":%d,\"duration_ms\":%d}", requestID, r.Method, r.URL.Path, recorder.status, duration.Milliseconds())
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(statusCode int) {
+	r.status = statusCode
+	r.ResponseWriter.WriteHeader(statusCode)
 }
 
 func originAllowed(origin string, allowed []string) bool {

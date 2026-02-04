@@ -121,6 +121,10 @@ body {
   grid-column: span 2;
 }
 
+.field.toggle {
+  align-self: end;
+}
+
 input {
   padding: 10px 12px;
   border-radius: 12px;
@@ -136,6 +140,18 @@ button {
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.toggle-button {
+  background: var(--bg-deep);
+  border: 1px solid #dcd3c9;
+  color: var(--ink-muted);
+}
+
+.toggle-button.active {
+  background: var(--accent-soft);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px rgba(255, 95, 46, 0.3);
 }
 
 button:disabled {

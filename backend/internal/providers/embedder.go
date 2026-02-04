@@ -8,6 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
+
+	"imagefinder/internal/retry"
 )
 
 type Embedder interface {
@@ -34,10 +37,12 @@ func (m *MockEmbedder) EmbedText(ctx context.Context, text string) ([]float32, e
 }
 
 type OpenAIEmbedder struct {
-	Endpoint string
-	APIKey   string
-	Model    string
-	Client   *http.Client
+	Endpoint   string
+	APIKey     string
+	Model      string
+	Client     *http.Client
+	RetryMax   int
+	RetryDelay time.Duration
 }
 
 func (o *OpenAIEmbedder) EmbedText(ctx context.Context, text string) ([]float32, error) {
@@ -49,26 +54,35 @@ func (o *OpenAIEmbedder) EmbedText(ctx context.Context, text string) ([]float32,
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.Endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+o.APIKey)
-	resp, err := o.Client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("OpenAI API エラー: %s", resp.Status)
-	}
 	var response struct {
 		Data []struct {
 			Embedding []float32 `json:"embedding"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+	err = retry.Do(ctx, o.RetryMax, o.RetryDelay, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.Endpoint, bytes.NewReader(body))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+o.APIKey)
+		resp, err := o.Client.Do(req)
+		if err != nil {
+			return retry.MarkRetryable(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return retry.MarkRetryable(fmt.Errorf("OpenAI API エラー: %s", resp.Status))
+		}
+		if resp.StatusCode >= 300 {
+			return fmt.Errorf("OpenAI API エラー: %s", resp.Status)
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	if len(response.Data) == 0 {

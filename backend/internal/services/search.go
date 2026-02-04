@@ -12,16 +12,16 @@ import (
 )
 
 type SearchService struct {
-	Store       *store.Store
-	Embedder    providers.Embedder
+	Store    *store.Store
+	Embedder providers.Embedder
 	MaxLimit int
 }
 
 type SearchInput struct {
-	Query   string
-	Limit   int
-	From    *time.Time
-	To      *time.Time
+	Query    string
+	Limit    int
+	From     *time.Time
+	To       *time.Time
 	Location string
 }
 
