@@ -24,26 +24,9 @@ type Indexer struct {
 }
 
 func (i *Indexer) Run(ctx context.Context, job models.Job) error {
-	tokens, err := i.Store.GetTokens(ctx, job.UserID)
+	tokens, err := i.AuthService.EnsureAccessToken(ctx, job.UserID)
 	if err != nil {
 		return err
-	}
-	if time.Now().After(tokens.ExpiresAt.Add(-1*time.Minute)) && tokens.RefreshToken != "" {
-		refreshed, err := i.AuthService.RefreshToken(ctx, tokens.RefreshToken)
-		if err != nil {
-			return err
-		}
-		accessToken := refreshed.AccessToken
-		expiresAt := refreshed.ExpiresAt()
-		refreshToken := tokens.RefreshToken
-		if refreshed.RefreshToken != "" {
-			refreshToken = refreshed.RefreshToken
-		}
-		if err := i.Store.SaveTokens(ctx, job.UserID, accessToken, refreshToken, expiresAt, refreshed.Scope); err != nil {
-			return err
-		}
-		tokens.AccessToken = accessToken
-		tokens.ExpiresAt = expiresAt
 	}
 
 	pageToken := ""
@@ -109,35 +92,4 @@ func (i *Indexer) Run(ctx context.Context, job models.Job) error {
 		pageToken = nextToken
 	}
 	return nil
-}
-
-func buildCaption(base string, createdTime *time.Time, location *string, labels []string) string {
-	pieces := []string{}
-	if strings.TrimSpace(base) != "" {
-		pieces = append(pieces, base)
-	}
-	if createdTime != nil {
-		pieces = append(pieces, createdTime.Format("2006-01-02"))
-	}
-	if location != nil {
-		pieces = append(pieces, "場所:"+*location)
-	}
-	if len(labels) > 0 {
-		pieces = append(pieces, "ラベル:"+strings.Join(labels, ","))
-	}
-	if len(pieces) == 0 {
-		return "写真の説明"
-	}
-	return strings.Join(pieces, " ")
-}
-
-func truncateText(text string, maxLength int) string {
-	if maxLength <= 0 {
-		return text
-	}
-	runes := []rune(text)
-	if len(runes) <= maxLength {
-		return text
-	}
-	return string(runes[:maxLength])
 }

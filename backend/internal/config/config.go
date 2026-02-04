@@ -26,6 +26,8 @@ type Config struct {
 	GoogleOAuthTokenURL    string
 	GoogleUserInfoURL      string
 	GooglePhotosAPIBase    string
+	GooglePhotosPickerBase string
+	GooglePhotosMode       string
 	GooglePhotosPageSize   int
 	GeminiMode             string
 	GeminiAPIKey           string
@@ -62,11 +64,13 @@ func Load() Config {
 		GoogleClientID:         getEnv("GOOGLE_OAUTH_CLIENT_ID", ""),
 		GoogleClientSecret:     getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
 		GoogleRedirectURL:      getEnv("GOOGLE_OAUTH_REDIRECT_URL", "http://localhost:8080/auth/callback"),
-		GoogleOAuthScopes:      splitEnv("GOOGLE_OAUTH_SCOPES", "https://www.googleapis.com/auth/photoslibrary.readonly openid email"),
+		GoogleOAuthScopes:      splitEnv("GOOGLE_OAUTH_SCOPES", "https://www.googleapis.com/auth/photospicker.mediaitems.readonly openid email"),
 		GoogleOAuthAuthURL:     getEnv("GOOGLE_OAUTH_AUTH_URL", "https://accounts.google.com/o/oauth2/v2/auth"),
 		GoogleOAuthTokenURL:    getEnv("GOOGLE_OAUTH_TOKEN_URL", "https://oauth2.googleapis.com/token"),
 		GoogleUserInfoURL:      getEnv("GOOGLE_USERINFO_URL", "https://www.googleapis.com/oauth2/v3/userinfo"),
 		GooglePhotosAPIBase:    getEnv("GOOGLE_PHOTOS_API_BASE", "https://photoslibrary.googleapis.com/v1"),
+		GooglePhotosPickerBase: getEnv("GOOGLE_PHOTOS_PICKER_BASE", "https://photospicker.googleapis.com/v1"),
+		GooglePhotosMode:       getEnv("GOOGLE_PHOTOS_MODE", "picker"),
 		GooglePhotosPageSize:   getEnvInt("GOOGLE_PHOTOS_PAGE_SIZE", 50),
 		GeminiMode:             getEnv("GEMINI_MODE", "mock"),
 		GeminiAPIKey:           getEnv("GEMINI_API_KEY", ""),

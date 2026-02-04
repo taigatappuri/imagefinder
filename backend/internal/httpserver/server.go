@@ -3,6 +3,7 @@ package httpserver
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -23,15 +24,17 @@ type Server struct {
 	Store   *store.Store
 	Auth    *services.AuthService
 	Search  *services.SearchService
+	Picker  *services.PickerService
 	Session *security.SessionManager
 }
 
-func NewServer(cfg config.Config, store *store.Store, auth *services.AuthService, search *services.SearchService, session *security.SessionManager) http.Handler {
+func NewServer(cfg config.Config, store *store.Store, auth *services.AuthService, search *services.SearchService, picker *services.PickerService, session *security.SessionManager) http.Handler {
 	s := &Server{
 		Config:  cfg,
 		Store:   store,
 		Auth:    auth,
 		Search:  search,
+		Picker:  picker,
 		Session: session,
 	}
 	mux := http.NewServeMux()
@@ -42,8 +45,11 @@ func NewServer(cfg config.Config, store *store.Store, auth *services.AuthService
 	mux.HandleFunc("/auth/me", s.handleAuthMe)
 	mux.HandleFunc("/index/update", s.handleIndexUpdate)
 	mux.HandleFunc("/index/status", s.handleIndexStatus)
+	mux.HandleFunc("/picker/session", s.handlePickerSession)
+	mux.HandleFunc("/picker/session/", s.handlePickerSessionDetail)
+	mux.HandleFunc("/picker/import", s.handlePickerImport)
 	mux.HandleFunc("/search", s.handleSearch)
-	mux.HandleFunc("/photos/", s.handlePhotoDetail)
+	mux.HandleFunc("/photos/", s.handlePhotoRoutes)
 	return s.withCORS(s.withLogging(mux))
 }
 
@@ -148,6 +154,10 @@ func (s *Server) handleIndexUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "POST のみ対応しています")
 		return
 	}
+	if s.Config.GooglePhotosMode == "picker" {
+		writeError(w, http.StatusBadRequest, "Google Photos Picker を使用してください")
+		return
+	}
 	userID, err := s.requireUserID(r)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "認証が必要です")
@@ -186,6 +196,105 @@ func (s *Server) handleIndexStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"job": job})
+}
+
+func (s *Server) handlePickerSession(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST のみ対応しています")
+		return
+	}
+	if s.Picker == nil || s.Picker.PickerClient == nil {
+		writeError(w, http.StatusBadRequest, "Google Photos Picker の設定が不足しています")
+		return
+	}
+	userID, err := s.requireUserID(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "認証が必要です")
+		return
+	}
+	session, err := s.Picker.CreateSession(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Picker セッションの作成に失敗しました")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session_id":     session.ID,
+		"picker_uri":     session.PickerURI,
+		"polling_config": session.PollingConfig,
+	})
+}
+
+func (s *Server) handlePickerSessionDetail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodDelete {
+		writeError(w, http.StatusMethodNotAllowed, "GET または DELETE のみ対応しています")
+		return
+	}
+	if s.Picker == nil || s.Picker.PickerClient == nil {
+		writeError(w, http.StatusBadRequest, "Google Photos Picker の設定が不足しています")
+		return
+	}
+	userID, err := s.requireUserID(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "認証が必要です")
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/picker/session/")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "セッション ID が不正です")
+		return
+	}
+	if r.Method == http.MethodDelete {
+		tokens, err := s.Auth.EnsureAccessToken(r.Context(), userID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "アクセストークンの取得に失敗しました")
+			return
+		}
+		if err := s.Picker.PickerClient.DeleteSession(r.Context(), tokens.AccessToken, id); err != nil {
+			writeError(w, http.StatusBadRequest, "セッションの削除に失敗しました")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+		return
+	}
+	session, err := s.Picker.GetSession(r.Context(), userID, id)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Picker セッションの取得に失敗しました")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session_id":      session.ID,
+		"media_items_set": session.MediaItemsSet,
+		"polling_config":  session.PollingConfig,
+	})
+}
+
+func (s *Server) handlePickerImport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST のみ対応しています")
+		return
+	}
+	if s.Picker == nil || s.Picker.PickerClient == nil {
+		writeError(w, http.StatusBadRequest, "Google Photos Picker の設定が不足しています")
+		return
+	}
+	userID, err := s.requireUserID(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "認証が必要です")
+		return
+	}
+	var payload struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := decodeJSON(r, &payload); err != nil || strings.TrimSpace(payload.SessionID) == "" {
+		writeError(w, http.StatusBadRequest, "セッション ID が不正です")
+		return
+	}
+	imported, err := s.Picker.ImportSession(r.Context(), userID, payload.SessionID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Picker からの取り込みに失敗しました")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"imported": imported})
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -264,13 +373,22 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, output)
 }
 
-func (s *Server) handlePhotoDetail(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handlePhotoRoutes(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/photos/")
+	if strings.HasSuffix(path, "/thumbnail") {
+		id := strings.TrimSuffix(path, "/thumbnail")
+		s.handlePhotoThumbnail(w, r, id)
+		return
+	}
+	s.handlePhotoDetail(w, r, path)
+}
+
+func (s *Server) handlePhotoDetail(w http.ResponseWriter, r *http.Request, id string) {
 	userID, err := s.requireUserID(r)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "認証が必要です")
 		return
 	}
-	id := strings.TrimPrefix(r.URL.Path, "/photos/")
 	photoID, err := uuid.Parse(id)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "ID が不正です")
@@ -303,6 +421,66 @@ func (s *Server) handlePhotoDetail(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
+func (s *Server) handlePhotoThumbnail(w http.ResponseWriter, r *http.Request, id string) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET のみ対応しています")
+		return
+	}
+	userID, err := s.requireUserID(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "認証が必要です")
+		return
+	}
+	photoID, err := uuid.Parse(id)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "ID が不正です")
+		return
+	}
+	photo, err := s.Store.GetPhotoByID(r.Context(), userID, photoID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "写真が見つかりません")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "写真の取得に失敗しました")
+		return
+	}
+	tokens, err := s.Auth.EnsureAccessToken(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "アクセストークンの取得に失敗しました")
+		return
+	}
+	thumbURL := buildThumbnailURL(photo.BaseURL)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, thumbURL, nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "サムネイル取得に失敗しました")
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
+	resp, err := s.Auth.Client.Do(req)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "サムネイル取得に失敗しました")
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		writeError(w, http.StatusBadGateway, "サムネイル取得に失敗しました")
+		return
+	}
+	if contentType := resp.Header.Get("Content-Type"); contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, resp.Body)
+}
+
+func buildThumbnailURL(base string) string {
+	if strings.Contains(base, "googleusercontent") || strings.Contains(base, "photoslibrary") || strings.Contains(base, "googleapis") {
+		return base + "=w600-h600"
+	}
+	return base
+}
+
 func (s *Server) requireUserID(r *http.Request) (uuid.UUID, error) {
 	value, err := s.Session.ParseUserID(r)
 	if err != nil {
@@ -321,7 +499,7 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 		}
 		if r.Method == http.MethodOptions {
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

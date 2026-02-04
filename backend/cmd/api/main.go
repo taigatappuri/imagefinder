@@ -61,7 +61,33 @@ func main() {
 
 	searchService := &services.SearchService{Store: store, Embedder: embedder, MaxLimit: cfg.MaxSearchLimit}
 
-	handler := httpserver.NewServer(cfg, store, authService, searchService, session)
+	var captioner providers.Captioner
+	if cfg.GeminiMode == "api" {
+		captioner = &providers.GeminiCaptioner{Endpoint: cfg.GeminiAPIEndpoint, APIKey: cfg.GeminiAPIKey, Client: client, RetryMax: cfg.ExternalAPIRetryMax, RetryDelay: cfg.ExternalAPIRetryDelay}
+	} else {
+		captioner = &providers.MockCaptioner{}
+	}
+
+	var pickerClient providers.PhotosPickerClient
+	if cfg.GoogleClientID != "" {
+		pickerClient = &providers.HTTPPhotosPickerClient{
+			BaseURL:    cfg.GooglePhotosPickerBase,
+			Client:     client,
+			RetryMax:   cfg.ExternalAPIRetryMax,
+			RetryDelay: cfg.ExternalAPIRetryDelay,
+		}
+	}
+	pickerService := &services.PickerService{
+		Store:         store,
+		PickerClient:  pickerClient,
+		Captioner:     captioner,
+		Embedder:      embedder,
+		AuthService:   authService,
+		PageSize:      cfg.GooglePhotosPageSize,
+		MaxTextLength: cfg.MaxEmbeddingTextLength,
+	}
+
+	handler := httpserver.NewServer(cfg, store, authService, searchService, pickerService, session)
 
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: handler}
 

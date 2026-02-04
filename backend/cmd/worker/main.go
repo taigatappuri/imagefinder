@@ -111,6 +111,13 @@ func main() {
 
 		switch job.Type {
 		case jobs.TypeIndex:
+			if cfg.GooglePhotosMode == "picker" {
+				message := "Picker モードではインデックスジョブは使用できません"
+				if err := store.UpdateJobStatus(ctx, job.ID, jobs.StatusFailed, -1, &message); err != nil {
+					log.Printf("ジョブ失敗更新に失敗: %v", err)
+				}
+				continue
+			}
 			if err := indexer.Run(ctx, job); err != nil {
 				message := err.Error()
 				if err := store.UpdateJobStatus(ctx, job.ID, jobs.StatusFailed, -1, &message); err != nil {

@@ -17,6 +17,17 @@ type SearchItem = {
   score: number
 }
 
+type PickerPollingConfig = {
+  pollInterval?: string
+  timeoutIn?: string
+}
+
+type PickerSessionResponse = {
+  session_id: string
+  picker_uri: string
+  polling_config?: PickerPollingConfig | null
+}
+
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false)
   const [checkingAuth, setCheckingAuth] = useState(true)
@@ -27,9 +38,13 @@ export default function App() {
   const [toDate, setToDate] = useState('')
   const [location, setLocation] = useState('')
   const [results, setResults] = useState<SearchItem[]>([])
+  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({})
   const [statusMessage, setStatusMessage] = useState('')
   const [loadingSearch, setLoadingSearch] = useState(false)
   const [showScore, setShowScore] = useState(true)
+  const [pickerSession, setPickerSession] = useState<PickerSessionResponse | null>(null)
+  const [pickerStatus, setPickerStatus] = useState('')
+  const [importingPicker, setImportingPicker] = useState(false)
 
   const hasResults = results.length > 0
 
@@ -71,6 +86,54 @@ export default function App() {
     return () => clearInterval(timer)
   }, [authenticated])
 
+  useEffect(() => {
+    if (results.length === 0) return
+    const activeIds = new Set(results.map((item) => item.id))
+    setThumbnailUrls((prev) => {
+      const next: Record<string, string> = {}
+      for (const [id, url] of Object.entries(prev)) {
+        if (activeIds.has(id)) {
+          next[id] = url
+        } else {
+          URL.revokeObjectURL(url)
+        }
+      }
+      return next
+    })
+  }, [results])
+
+  useEffect(() => {
+    if (!authenticated || results.length === 0) return
+    let cancelled = false
+    const controller = new AbortController()
+
+    const loadThumbnail = async (item: SearchItem) => {
+      if (thumbnailUrls[item.id]) return
+      try {
+        const res = await fetch(`${API_BASE}/photos/${item.id}/thumbnail`, {
+          credentials: 'include',
+          signal: controller.signal
+        })
+        if (!res.ok) return
+        const blob = await res.blob()
+        if (cancelled) return
+        const url = URL.createObjectURL(blob)
+        setThumbnailUrls((prev) => ({ ...prev, [item.id]: url }))
+      } catch {
+        return
+      }
+    }
+
+    results.forEach((item) => {
+      loadThumbnail(item)
+    })
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [results, authenticated, thumbnailUrls])
+
   const startLogin = () => {
     window.location.href = `${API_BASE}/auth/google`
   }
@@ -90,6 +153,71 @@ export default function App() {
       setStatusMessage('ジョブを作成しました')
     } catch {
       setStatusMessage('インデックス開始に失敗しました')
+    }
+  }
+
+  const parseDurationToMs = (value?: string | null) => {
+    if (!value) return 3000
+    const trimmed = value.trim()
+    if (trimmed.endsWith('ms')) {
+      const num = Number(trimmed.replace('ms', ''))
+      return Number.isNaN(num) ? 3000 : num
+    }
+    if (trimmed.endsWith('s')) {
+      const num = Number(trimmed.replace('s', ''))
+      return Number.isNaN(num) ? 3000 : num * 1000
+    }
+    const num = Number(trimmed)
+    return Number.isNaN(num) ? 3000 : num
+  }
+
+  const startPicker = async () => {
+    setPickerStatus('Picker セッションを作成しています...')
+    try {
+      const res = await fetch(`${API_BASE}/picker/session`, {
+        method: 'POST',
+        credentials: 'include'
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setPickerStatus(data.error || 'Picker セッションの作成に失敗しました')
+        return
+      }
+      const session: PickerSessionResponse = {
+        session_id: data.session_id,
+        picker_uri: data.picker_uri,
+        polling_config: data.polling_config
+      }
+      setPickerSession(session)
+      setPickerStatus('写真選択画面を開きました')
+      window.open(session.picker_uri, '_blank', 'noopener,noreferrer')
+    } catch {
+      setPickerStatus('Picker セッションの作成に失敗しました')
+    }
+  }
+
+  const importPickerSession = async (sessionId: string) => {
+    if (importingPicker) return
+    setImportingPicker(true)
+    setPickerStatus('選択された写真を取り込んでいます...')
+    try {
+      const res = await fetch(`${API_BASE}/picker/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ session_id: sessionId })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setPickerStatus(data.error || '取り込みに失敗しました')
+        return
+      }
+      setPickerStatus(`取り込み完了: ${data.imported ?? 0} 件`)
+      setPickerSession(null)
+    } catch {
+      setPickerStatus('取り込みに失敗しました')
+    } finally {
+      setImportingPicker(false)
     }
   }
 
@@ -124,6 +252,39 @@ export default function App() {
       setLoadingSearch(false)
     }
   }
+
+  useEffect(() => {
+    if (!pickerSession || !authenticated) return
+    const intervalMs = parseDurationToMs(pickerSession.polling_config?.pollInterval)
+    let stopped = false
+
+    const poll = async () => {
+      if (stopped) return
+      try {
+        const res = await fetch(`${API_BASE}/picker/session/${pickerSession.session_id}`, {
+          credentials: 'include'
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          setPickerStatus(data.error || 'Picker セッションの確認に失敗しました')
+          return
+        }
+        if (data.media_items_set) {
+          stopped = true
+          await importPickerSession(pickerSession.session_id)
+        }
+      } catch {
+        setPickerStatus('Picker セッションの確認に失敗しました')
+      }
+    }
+
+    const timer = setInterval(poll, intervalMs)
+    poll()
+    return () => {
+      stopped = true
+      clearInterval(timer)
+    }
+  }, [pickerSession, authenticated])
 
   return (
     <div className="page">
@@ -164,6 +325,19 @@ export default function App() {
             <strong>{jobLabel}</strong>
             {job?.error_message ? <span className="error">{job.error_message}</span> : null}
           </div>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-header">
+          <h2>Google Photos から選択</h2>
+          <p>Picker で写真を選び、そのままインデックスに追加します。</p>
+        </div>
+        <div className="panel-body">
+          <button className="secondary" onClick={startPicker} disabled={!authenticated || importingPicker}>
+            {importingPicker ? '取り込み中...' : '写真を選択する'}
+          </button>
+          {pickerStatus ? <div className="status">{pickerStatus}</div> : null}
         </div>
       </section>
 
@@ -232,36 +406,32 @@ export default function App() {
             <div className="grid">
               {results.map((item) => (
                 <article key={item.id} className="card">
-                  {(() => {
-                    const isGoogle = item.base_url.includes('googleusercontent') || item.base_url.includes('photoslibrary')
-                    const thumbUrl = isGoogle ? `${item.base_url}=w600-h600` : item.base_url
-                    return (
-                      <>
-                        <div className="thumb">
-                          <img src={thumbUrl} alt="search result" loading="lazy" />
-                        </div>
-                        <div className="meta">
-                          {showScore ? (
-                            <div>
-                              <span className="label">スコア</span>
-                              <strong>{item.score.toFixed(3)}</strong>
-                            </div>
-                          ) : null}
-                          <div>
-                            <span className="label">日時</span>
-                            <span>{item.created_time ? item.created_time.slice(0, 10) : '-'}</span>
-                          </div>
-                          <div>
-                            <span className="label">場所</span>
-                            <span>{item.location || '-'}</span>
-                          </div>
-                          <a className="link" href={item.base_url} target="_blank" rel="noreferrer">
-                            Google Photos を開く
-                          </a>
-                        </div>
-                      </>
-                    )
-                  })()}
+                  <div className="thumb">
+                    {thumbnailUrls[item.id] ? (
+                      <img src={thumbnailUrls[item.id]} alt="search result" loading="lazy" />
+                    ) : (
+                      <div className="thumb-placeholder">読み込み中...</div>
+                    )}
+                  </div>
+                  <div className="meta">
+                    {showScore ? (
+                      <div>
+                        <span className="label">スコア</span>
+                        <strong>{item.score.toFixed(3)}</strong>
+                      </div>
+                    ) : null}
+                    <div>
+                      <span className="label">日時</span>
+                      <span>{item.created_time ? item.created_time.slice(0, 10) : '-'}</span>
+                    </div>
+                    <div>
+                      <span className="label">場所</span>
+                      <span>{item.location || '-'}</span>
+                    </div>
+                    <a className="link" href={item.base_url} target="_blank" rel="noreferrer">
+                      Google Photos を開く
+                    </a>
+                  </div>
                 </article>
               ))}
             </div>

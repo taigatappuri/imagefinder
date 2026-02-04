@@ -22,28 +22,47 @@ services:
       - ../backend:/app
       - go_mod_cache:/go/pkg/mod
     environment:
-      APP_ENV: development
-      HTTP_ADDR: :8080
-      FRONTEND_BASE_URL: http://localhost:5173
-      DATABASE_URL: postgres://imagefinder:imagefinder@db:5432/imagefinder?sslmode=disable
-      DB_AUTO_MIGRATE: "true"
+      APP_ENV: ${APP_ENV:-development}
+      HTTP_ADDR: ${HTTP_ADDR:-:8080}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:5173}
+      DATABASE_URL: ${DATABASE_URL:-postgres://imagefinder:imagefinder@db:5432/imagefinder?sslmode=disable}
+      DB_AUTO_MIGRATE: ${DB_AUTO_MIGRATE:-true}
       GO111MODULE: "on"
       GOFLAGS: "-mod=mod"
-      SESSION_SECRET: dev-secret
-      SESSION_TTL: 168h
-      TOKEN_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-      COOKIE_SECURE: "false"
-      CORS_ALLOWED_ORIGINS: http://localhost:5173
-      OPENAI_MODE: mock
-      GEMINI_MODE: mock
-      GOOGLE_OAUTH_REDIRECT_URL: http://localhost:8080/auth/callback
-      MAX_SEARCH_LIMIT: 30
-      MAX_QUERY_LENGTH: 200
-      MAX_LOCATION_LENGTH: 100
-      MAX_EMBEDDING_TEXT_LENGTH: 2000
-      EXTERNAL_API_RETRY_MAX: 3
-      EXTERNAL_API_RETRY_BASE_DELAY: 500ms
-      JOB_POLL_INTERVAL: 3s
+      SESSION_SECRET: ${SESSION_SECRET:-dev-secret}
+      SESSION_TTL: ${SESSION_TTL:-168h}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+      KMS_KEY_ID: ${KMS_KEY_ID:-}
+      AWS_REGION: ${AWS_REGION:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_REDIRECT_URL: ${GOOGLE_OAUTH_REDIRECT_URL:-http://localhost:8080/auth/callback}
+      GOOGLE_OAUTH_SCOPES: "${GOOGLE_OAUTH_SCOPES:-https://www.googleapis.com/auth/photospicker.mediaitems.readonly openid email}"
+      GOOGLE_OAUTH_AUTH_URL: ${GOOGLE_OAUTH_AUTH_URL:-https://accounts.google.com/o/oauth2/v2/auth}
+      GOOGLE_OAUTH_TOKEN_URL: ${GOOGLE_OAUTH_TOKEN_URL:-https://oauth2.googleapis.com/token}
+      GOOGLE_USERINFO_URL: ${GOOGLE_USERINFO_URL:-https://www.googleapis.com/oauth2/v3/userinfo}
+      GOOGLE_PHOTOS_API_BASE: ${GOOGLE_PHOTOS_API_BASE:-https://photoslibrary.googleapis.com/v1}
+      GOOGLE_PHOTOS_PICKER_BASE: ${GOOGLE_PHOTOS_PICKER_BASE:-https://photospicker.googleapis.com/v1}
+      GOOGLE_PHOTOS_MODE: ${GOOGLE_PHOTOS_MODE:-picker}
+      GOOGLE_PHOTOS_PAGE_SIZE: ${GOOGLE_PHOTOS_PAGE_SIZE:-50}
+      OPENAI_MODE: ${OPENAI_MODE:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_ENDPOINT: ${OPENAI_API_ENDPOINT:-https://api.openai.com/v1/embeddings}
+      OPENAI_MODEL: ${OPENAI_MODEL:-text-embedding-3-small}
+      GEMINI_MODE: ${GEMINI_MODE:-mock}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_ENDPOINT: ${GEMINI_API_ENDPOINT:-https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
+      MAX_SEARCH_LIMIT: ${MAX_SEARCH_LIMIT:-30}
+      MAX_QUERY_LENGTH: ${MAX_QUERY_LENGTH:-200}
+      MAX_LOCATION_LENGTH: ${MAX_LOCATION_LENGTH:-100}
+      MAX_EMBEDDING_TEXT_LENGTH: ${MAX_EMBEDDING_TEXT_LENGTH:-2000}
+      EXTERNAL_API_RETRY_MAX: ${EXTERNAL_API_RETRY_MAX:-3}
+      EXTERNAL_API_RETRY_BASE_DELAY: ${EXTERNAL_API_RETRY_BASE_DELAY:-500ms}
+      JOB_POLL_INTERVAL: ${JOB_POLL_INTERVAL:-3s}
     command: sh -c "go mod download && go run ./cmd/api"
     ports:
       - "8080:8080"
@@ -58,27 +77,47 @@ services:
       - ../backend:/app
       - go_mod_cache:/go/pkg/mod
     environment:
-      APP_ENV: development
-      HTTP_ADDR: :8080
-      FRONTEND_BASE_URL: http://localhost:5173
-      DATABASE_URL: postgres://imagefinder:imagefinder@db:5432/imagefinder?sslmode=disable
-      DB_AUTO_MIGRATE: "true"
+      APP_ENV: ${APP_ENV:-development}
+      HTTP_ADDR: ${HTTP_ADDR:-:8080}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:5173}
+      DATABASE_URL: ${DATABASE_URL:-postgres://imagefinder:imagefinder@db:5432/imagefinder?sslmode=disable}
+      DB_AUTO_MIGRATE: ${DB_AUTO_MIGRATE:-true}
       GO111MODULE: "on"
       GOFLAGS: "-mod=mod"
-      SESSION_SECRET: dev-secret
-      SESSION_TTL: 168h
-      TOKEN_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-      COOKIE_SECURE: "false"
-      CORS_ALLOWED_ORIGINS: http://localhost:5173
-      OPENAI_MODE: mock
-      GEMINI_MODE: mock
-      MAX_SEARCH_LIMIT: 30
-      MAX_QUERY_LENGTH: 200
-      MAX_LOCATION_LENGTH: 100
-      MAX_EMBEDDING_TEXT_LENGTH: 2000
-      EXTERNAL_API_RETRY_MAX: 3
-      EXTERNAL_API_RETRY_BASE_DELAY: 500ms
-      JOB_POLL_INTERVAL: 3s
+      SESSION_SECRET: ${SESSION_SECRET:-dev-secret}
+      SESSION_TTL: ${SESSION_TTL:-168h}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+      KMS_KEY_ID: ${KMS_KEY_ID:-}
+      AWS_REGION: ${AWS_REGION:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_REDIRECT_URL: ${GOOGLE_OAUTH_REDIRECT_URL:-http://localhost:8080/auth/callback}
+      GOOGLE_OAUTH_SCOPES: "${GOOGLE_OAUTH_SCOPES:-https://www.googleapis.com/auth/photospicker.mediaitems.readonly openid email}"
+      GOOGLE_OAUTH_AUTH_URL: ${GOOGLE_OAUTH_AUTH_URL:-https://accounts.google.com/o/oauth2/v2/auth}
+      GOOGLE_OAUTH_TOKEN_URL: ${GOOGLE_OAUTH_TOKEN_URL:-https://oauth2.googleapis.com/token}
+      GOOGLE_USERINFO_URL: ${GOOGLE_USERINFO_URL:-https://www.googleapis.com/oauth2/v3/userinfo}
+      GOOGLE_PHOTOS_API_BASE: ${GOOGLE_PHOTOS_API_BASE:-https://photoslibrary.googleapis.com/v1}
+      GOOGLE_PHOTOS_PICKER_BASE: ${GOOGLE_PHOTOS_PICKER_BASE:-https://photospicker.googleapis.com/v1}
+      GOOGLE_PHOTOS_MODE: ${GOOGLE_PHOTOS_MODE:-picker}
+      GOOGLE_PHOTOS_PAGE_SIZE: ${GOOGLE_PHOTOS_PAGE_SIZE:-50}
+      OPENAI_MODE: ${OPENAI_MODE:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_ENDPOINT: ${OPENAI_API_ENDPOINT:-https://api.openai.com/v1/embeddings}
+      OPENAI_MODEL: ${OPENAI_MODEL:-text-embedding-3-small}
+      GEMINI_MODE: ${GEMINI_MODE:-mock}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_ENDPOINT: ${GEMINI_API_ENDPOINT:-https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
+      MAX_SEARCH_LIMIT: ${MAX_SEARCH_LIMIT:-30}
+      MAX_QUERY_LENGTH: ${MAX_QUERY_LENGTH:-200}
+      MAX_LOCATION_LENGTH: ${MAX_LOCATION_LENGTH:-100}
+      MAX_EMBEDDING_TEXT_LENGTH: ${MAX_EMBEDDING_TEXT_LENGTH:-2000}
+      EXTERNAL_API_RETRY_MAX: ${EXTERNAL_API_RETRY_MAX:-3}
+      EXTERNAL_API_RETRY_BASE_DELAY: ${EXTERNAL_API_RETRY_BASE_DELAY:-500ms}
+      JOB_POLL_INTERVAL: ${JOB_POLL_INTERVAL:-3s}
     command: sh -c "go mod download && go run ./cmd/worker"
     depends_on:
       db:

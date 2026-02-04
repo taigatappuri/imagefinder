@@ -10,8 +10,11 @@ import (
 	"time"
 
 	"imagefinder/internal/config"
+	"imagefinder/internal/models"
 	"imagefinder/internal/retry"
 	"imagefinder/internal/store"
+
+	"github.com/google/uuid"
 )
 
 type AuthService struct {
@@ -164,4 +167,30 @@ func (u userInfo) GoogleID() string {
 		return u.Sub
 	}
 	return u.ID
+}
+
+func (s *AuthService) EnsureAccessToken(ctx context.Context, userID uuid.UUID) (models.OAuthToken, error) {
+	tokens, err := s.Store.GetTokens(ctx, userID)
+	if err != nil {
+		return models.OAuthToken{}, err
+	}
+	if time.Now().After(tokens.ExpiresAt.Add(-1*time.Minute)) && tokens.RefreshToken != "" {
+		refreshed, err := s.RefreshToken(ctx, tokens.RefreshToken)
+		if err != nil {
+			return models.OAuthToken{}, err
+		}
+		accessToken := refreshed.AccessToken
+		expiresAt := refreshed.ExpiresAt()
+		refreshToken := tokens.RefreshToken
+		if refreshed.RefreshToken != "" {
+			refreshToken = refreshed.RefreshToken
+		}
+		if err := s.Store.SaveTokens(ctx, userID, accessToken, refreshToken, expiresAt, refreshed.Scope); err != nil {
+			return models.OAuthToken{}, err
+		}
+		tokens.AccessToken = accessToken
+		tokens.ExpiresAt = expiresAt
+		tokens.RefreshToken = refreshToken
+	}
+	return tokens, nil
 }
