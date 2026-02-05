@@ -105,7 +105,8 @@ func (g *GeminiCaptioner) Caption(ctx context.Context, input CaptionInput) (Capt
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-			return retry.MarkRetryable(fmt.Errorf("Gemini API エラー: %s", resp.Status))
+			delay := retryAfterDuration(resp.Header.Get("Retry-After"))
+			return retry.MarkRetryable(retry.RetryAfterError{Err: fmt.Errorf("Gemini API エラー: %s", resp.Status), Delay: delay})
 		}
 		if resp.StatusCode >= 300 {
 			return fmt.Errorf("Gemini API エラー: %s", resp.Status)

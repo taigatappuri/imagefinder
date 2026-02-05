@@ -18,6 +18,27 @@ func (e RetryableError) Unwrap() error {
 	return e.Err
 }
 
+type RetryAfter interface {
+	RetryAfter() time.Duration
+}
+
+type RetryAfterError struct {
+	Err   error
+	Delay time.Duration
+}
+
+func (e RetryAfterError) Error() string {
+	return e.Err.Error()
+}
+
+func (e RetryAfterError) Unwrap() error {
+	return e.Err
+}
+
+func (e RetryAfterError) RetryAfter() time.Duration {
+	return e.Delay
+}
+
 func MarkRetryable(err error) error {
 	if err == nil {
 		return nil
@@ -48,6 +69,9 @@ func Do(ctx context.Context, maxRetries int, baseDelay time.Duration, fn func() 
 				return err
 			}
 			wait := baseDelay * time.Duration(attempt+1)
+			if retryAfter, ok := retryAfterDuration(err); ok && retryAfter > wait {
+				wait = retryAfter
+			}
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -58,4 +82,12 @@ func Do(ctx context.Context, maxRetries int, baseDelay time.Duration, fn func() 
 		return nil
 	}
 	return lastErr
+}
+
+func retryAfterDuration(err error) (time.Duration, bool) {
+	var retryAfter RetryAfter
+	if errors.As(err, &retryAfter) {
+		return retryAfter.RetryAfter(), true
+	}
+	return 0, false
 }

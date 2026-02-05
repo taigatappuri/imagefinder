@@ -72,7 +72,8 @@ func (o *OpenAIEmbedder) EmbedText(ctx context.Context, text string) ([]float32,
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-			return retry.MarkRetryable(fmt.Errorf("OpenAI API エラー: %s", resp.Status))
+			delay := retryAfterDuration(resp.Header.Get("Retry-After"))
+			return retry.MarkRetryable(retry.RetryAfterError{Err: fmt.Errorf("OpenAI API エラー: %s", resp.Status), Delay: delay})
 		}
 		if resp.StatusCode >= 300 {
 			return fmt.Errorf("OpenAI API エラー: %s", resp.Status)
