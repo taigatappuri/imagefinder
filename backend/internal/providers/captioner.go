@@ -122,11 +122,34 @@ func (g *GeminiCaptioner) Caption(ctx context.Context, input CaptionInput) (Capt
 		return CaptionResult{}, fmt.Errorf("gemini 応答が空です")
 	}
 	text := response.Candidates[0].Content.Parts[0].Text
-	var result CaptionResult
-	if err := json.Unmarshal([]byte(text), &result); err == nil {
+	if result, ok := parseGeminiText(text); ok {
 		return result, nil
 	}
 	return CaptionResult{Caption: text, PeopleCount: 0, Labels: []string{}}, nil
+}
+
+func parseGeminiText(text string) (CaptionResult, bool) {
+	var result CaptionResult
+	if err := json.Unmarshal([]byte(text), &result); err == nil {
+		return result, true
+	}
+	candidate := extractJSON(text)
+	if candidate == "" {
+		return CaptionResult{}, false
+	}
+	if err := json.Unmarshal([]byte(candidate), &result); err == nil {
+		return result, true
+	}
+	return CaptionResult{}, false
+}
+
+func extractJSON(text string) string {
+	start := strings.Index(text, "{")
+	end := strings.LastIndex(text, "}")
+	if start == -1 || end == -1 || end <= start {
+		return ""
+	}
+	return text[start : end+1]
 }
 
 func fetchImage(ctx context.Context, client *http.Client, url string, accessToken string) ([]byte, string, error) {

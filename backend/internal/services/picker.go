@@ -23,6 +23,12 @@ type PickerService struct {
 	MaxTextLength int
 }
 
+type PickerImportResult struct {
+	Imported  int
+	Failed    int
+	LastError error
+}
+
 func (p *PickerService) CreateSession(ctx context.Context, userID uuid.UUID) (providers.PickerSession, error) {
 	tokens, err := p.AuthService.EnsureAccessToken(ctx, userID)
 	if err != nil {
@@ -39,10 +45,10 @@ func (p *PickerService) GetSession(ctx context.Context, userID uuid.UUID, sessio
 	return p.PickerClient.GetSession(ctx, tokens.AccessToken, sessionID)
 }
 
-func (p *PickerService) ImportSession(ctx context.Context, userID uuid.UUID, sessionID string) (int, error) {
+func (p *PickerService) ImportSession(ctx context.Context, userID uuid.UUID, sessionID string) (PickerImportResult, error) {
 	tokens, err := p.AuthService.EnsureAccessToken(ctx, userID)
 	if err != nil {
-		return 0, err
+		return PickerImportResult{}, err
 	}
 	defer func() {
 		if p.PickerClient != nil {
@@ -51,11 +57,11 @@ func (p *PickerService) ImportSession(ctx context.Context, userID uuid.UUID, ses
 	}()
 
 	pageToken := ""
-	imported := 0
+	result := PickerImportResult{}
 	for {
 		items, nextToken, err := p.PickerClient.ListMediaItems(ctx, tokens.AccessToken, sessionID, p.PageSize, pageToken)
 		if err != nil {
-			return imported, err
+			return result, err
 		}
 		for _, item := range items {
 			if !strings.HasPrefix(item.MimeType, "image/") {
@@ -63,7 +69,7 @@ func (p *PickerService) ImportSession(ctx context.Context, userID uuid.UUID, ses
 			}
 			exists, err := p.Store.PhotoExistsByMediaID(ctx, item.ID)
 			if err != nil {
-				return imported, err
+				return result, err
 			}
 			if exists {
 				continue
@@ -74,13 +80,17 @@ func (p *PickerService) ImportSession(ctx context.Context, userID uuid.UUID, ses
 				AccessToken: tokens.AccessToken,
 			})
 			if err != nil {
-				return imported, err
+				result.Failed++
+				result.LastError = err
+				continue
 			}
 			finalCaption := buildCaption(caption.Caption, item.CreatedTime, nil, caption.Labels)
 			trimmedCaption := truncateText(finalCaption, p.MaxTextLength)
 			embedding, err := p.Embedder.EmbedText(ctx, trimmedCaption)
 			if err != nil {
-				return imported, err
+				result.Failed++
+				result.LastError = err
+				continue
 			}
 			photo := models.Photo{
 				ID:            uuid.New(),
@@ -93,14 +103,16 @@ func (p *PickerService) ImportSession(ctx context.Context, userID uuid.UUID, ses
 				IndexedAt:     time.Now(),
 			}
 			if err := p.Store.SavePhoto(ctx, photo); err != nil {
-				return imported, err
+				result.Failed++
+				result.LastError = err
+				continue
 			}
-			imported++
+			result.Imported++
 		}
 		if nextToken == "" {
 			break
 		}
 		pageToken = nextToken
 	}
-	return imported, nil
+	return result, nil
 }

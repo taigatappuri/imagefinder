@@ -305,10 +305,22 @@ func (s *Server) handlePickerImport(w http.ResponseWriter, r *http.Request) {
 	}
 	imported, err := s.Picker.ImportSession(r.Context(), userID, payload.SessionID)
 	if err != nil {
+		log.Printf("Picker 取り込みに失敗: %v", err)
+		if s.Config.AppEnv == "development" {
+			writeError(w, http.StatusBadRequest, "Picker からの取り込みに失敗しました: "+err.Error())
+			return
+		}
 		writeError(w, http.StatusBadRequest, "Picker からの取り込みに失敗しました")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"imported": imported})
+	response := map[string]any{
+		"imported": imported.Imported,
+		"failed":   imported.Failed,
+	}
+	if imported.LastError != nil && s.Config.AppEnv == "development" {
+		response["warning"] = imported.LastError.Error()
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {

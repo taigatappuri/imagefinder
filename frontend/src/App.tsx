@@ -239,7 +239,14 @@ export default function App() {
         setPickerStatus(data.error || '取り込みに失敗しました')
         return
       }
-      setPickerStatus(`取り込み完了: ${data.imported ?? 0} 件`)
+      const imported = data.imported ?? 0
+      const failed = data.failed ?? 0
+      const warning = data.warning ? ` / ${data.warning}` : ''
+      if (failed > 0) {
+        setPickerStatus(`取り込み完了: ${imported} 件 (失敗 ${failed} 件)${warning}`)
+      } else {
+        setPickerStatus(`取り込み完了: ${imported} 件${warning}`)
+      }
       setPickerSession(null)
     } catch {
       setPickerStatus('取り込みに失敗しました')

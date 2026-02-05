@@ -50,7 +50,7 @@ func main() {
 		}
 	}
 
-	store := &store.Store{DB: pool, Encryptor: encryptor}
+	store := &store.Store{DB: pool, Encryptor: encryptor, UseExactSearch: cfg.VectorSearchExact}
 	client := &http.Client{Timeout: 30 * time.Second}
 
 	authService := &services.AuthService{Config: cfg, Store: store, Client: client}

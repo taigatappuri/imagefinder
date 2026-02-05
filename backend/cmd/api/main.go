@@ -46,7 +46,7 @@ func main() {
 		}
 	}
 
-	store := &store.Store{DB: pool, Encryptor: encryptor}
+	store := &store.Store{DB: pool, Encryptor: encryptor, UseExactSearch: cfg.VectorSearchExact}
 	session := security.NewSessionManager(cfg.SessionSecret, cfg.SessionTTL, cfg.CookieSecure)
 	client := &http.Client{Timeout: 20 * time.Second}
 

@@ -17,8 +17,9 @@ import (
 )
 
 type Store struct {
-	DB        *pgxpool.Pool
-	Encryptor security.Encryptor
+	DB             *pgxpool.Pool
+	Encryptor      security.Encryptor
+	UseExactSearch bool
 }
 
 func (s *Store) UpsertUser(ctx context.Context, googleUserID, email string) (uuid.UUID, error) {
@@ -244,6 +245,36 @@ func (s *Store) SearchPhotos(ctx context.Context, userID uuid.UUID, embedding []
 		return results, rows.Err()
 	}
 
+	runExact := func() ([]SearchResult, error) {
+		tx, err := s.DB.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+		if err != nil {
+			return []SearchResult{}, nil
+		}
+		defer tx.Rollback(ctx)
+
+		if _, err := tx.Exec(ctx, "SET LOCAL enable_indexscan=off"); err != nil {
+			return []SearchResult{}, nil
+		}
+		if _, err := tx.Exec(ctx, "SET LOCAL enable_bitmapscan=off"); err != nil {
+			return []SearchResult{}, nil
+		}
+		if _, err := tx.Exec(ctx, "SET LOCAL enable_indexonlyscan=off"); err != nil {
+			return []SearchResult{}, nil
+		}
+		results, err := fetch(ctx, query, args, tx)
+		if err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return results, nil
+		}
+		return results, nil
+	}
+
+	if s.UseExactSearch {
+		return runExact()
+	}
+
 	results, err := fetch(ctx, query, args, s.DB)
 	if err != nil {
 		return nil, err
@@ -252,27 +283,5 @@ func (s *Store) SearchPhotos(ctx context.Context, userID uuid.UUID, embedding []
 		return results, nil
 	}
 
-	tx, err := s.DB.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
-	if err != nil {
-		return results, nil
-	}
-	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, "SET LOCAL enable_indexscan=off"); err != nil {
-		return results, nil
-	}
-	if _, err := tx.Exec(ctx, "SET LOCAL enable_bitmapscan=off"); err != nil {
-		return results, nil
-	}
-	if _, err := tx.Exec(ctx, "SET LOCAL enable_indexonlyscan=off"); err != nil {
-		return results, nil
-	}
-	results, err = fetch(ctx, query, args, tx)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return results, nil
-	}
-	return results, nil
+	return runExact()
 }

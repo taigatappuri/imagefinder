@@ -38,6 +38,7 @@ type Config struct {
 	OpenAIAPIEndpoint      string
 	OpenAIModel            string
 	EmbeddingDim           int
+	VectorSearchExact      bool
 	MaxSearchLimit         int
 	MaxQueryLength         int
 	MaxLocationLength      int
@@ -81,6 +82,7 @@ func Load() Config {
 		OpenAIAPIEndpoint:      getEnv("OPENAI_API_ENDPOINT", "https://api.openai.com/v1/embeddings"),
 		OpenAIModel:            getEnv("OPENAI_MODEL", "text-embedding-3-small"),
 		EmbeddingDim:           getEnvInt("EMBEDDING_DIM", 1536),
+		VectorSearchExact:      getEnvBool("VECTOR_SEARCH_EXACT", true),
 		MaxSearchLimit:         getEnvInt("MAX_SEARCH_LIMIT", 30),
 		MaxQueryLength:         getEnvInt("MAX_QUERY_LENGTH", 200),
 		MaxLocationLength:      getEnvInt("MAX_LOCATION_LENGTH", 100),

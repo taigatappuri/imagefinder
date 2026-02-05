@@ -82,7 +82,7 @@ npm run dev
 
 ## モックモード
 
-`OPENAI_MODE=mock` と `GEMINI_MODE=mock` が既定です。Google OAuth を未設定のままでも、開発環境では `/auth/google` が開発用ユーザーでログインし、ワーカーはモック写真を使ってインデックスを作成します。実際の Google Photos 連携を行う場合は `GOOGLE_OAUTH_CLIENT_ID` などを設定してください。実 API を使う場合は `OPENAI_MODE=api`、`GEMINI_MODE=api` を指定します（`real` も `api` と同じ扱いです）。
+`OPENAI_MODE=mock` と `GEMINI_MODE=mock` が既定です。Google OAuth を未設定のままでも、開発環境では `/auth/google` が開発用ユーザーでログインし、ワーカーはモック写真を使ってインデックスを作成します。実際の Google Photos 連携を行う場合は `GOOGLE_OAUTH_CLIENT_ID` などを設定してください。実 API を使う場合は `OPENAI_MODE=api`、`GEMINI_MODE=api` を指定します（`real` も `api` と同じ扱いです）。`VECTOR_SEARCH_EXACT=true` で正確なベクトル検索（シーケンシャル）を行います。
 
 ## Google Photos API について
 
