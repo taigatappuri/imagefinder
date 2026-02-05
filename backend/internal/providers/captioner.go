@@ -61,7 +61,7 @@ func (g *GeminiCaptioner) Caption(ctx context.Context, input CaptionInput) (Capt
 	if err != nil {
 		return CaptionResult{}, err
 	}
-	prompt := "この写真を日本語で1文で説明し、人物数と主要ラベルを抽出してください。JSONで {\"caption\":string,\"people_count\":number,\"labels\":[string]} の形式で返してください。"
+	prompt := "特徴や書いてある文字に触れながら、この写真を日本語で詳細に説明し、人物数と主要ラベルを抽出してください。JSONで {\"caption\":string,\"people_count\":number,\"labels\":[string]} の形式で返してください。"
 	payload := map[string]any{
 		"contents": []map[string]any{
 			{

@@ -28,6 +28,17 @@ type PickerSessionResponse = {
   polling_config?: PickerPollingConfig | null
 }
 
+type PickerImportStatus = {
+  status: string
+  total: number
+  processed: number
+  imported: number
+  failed: number
+  remaining?: number
+  warning?: string
+  error?: string
+}
+
 type AppConfig = {
   google_photos_mode?: string
   indexing_available?: boolean
@@ -51,6 +62,8 @@ export default function App() {
   const [pickerSession, setPickerSession] = useState<PickerSessionResponse | null>(null)
   const [pickerStatus, setPickerStatus] = useState('')
   const [importingPicker, setImportingPicker] = useState(false)
+  const [pickerImportId, setPickerImportId] = useState<string | null>(null)
+  const [pickerImportStatus, setPickerImportStatus] = useState<PickerImportStatus | null>(null)
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null)
 
   const hasResults = results.length > 0
@@ -237,21 +250,25 @@ export default function App() {
       const data = await res.json()
       if (!res.ok) {
         setPickerStatus(data.error || '取り込みに失敗しました')
+        setImportingPicker(false)
         return
       }
-      const imported = data.imported ?? 0
-      const failed = data.failed ?? 0
-      const warning = data.warning ? ` / ${data.warning}` : ''
-      if (failed > 0) {
-        setPickerStatus(`取り込み完了: ${imported} 件 (失敗 ${failed} 件)${warning}`)
-      } else {
-        setPickerStatus(`取り込み完了: ${imported} 件${warning}`)
-      }
-      setPickerSession(null)
+      const importId = data.import_id || sessionId
+      const total = data.total ?? 0
+      setPickerImportId(importId)
+      setPickerImportStatus({
+        status: data.status || 'running',
+        total,
+        processed: 0,
+        imported: 0,
+        failed: 0,
+        remaining: total
+      })
     } catch {
       setPickerStatus('取り込みに失敗しました')
-    } finally {
       setImportingPicker(false)
+    } finally {
+      return
     }
   }
 
@@ -320,6 +337,55 @@ export default function App() {
     }
   }, [pickerSession, authenticated])
 
+  useEffect(() => {
+    if (!pickerImportId || !authenticated) return
+    let stopped = false
+
+    const poll = async () => {
+      if (stopped) return
+      try {
+        const res = await fetch(`${API_BASE}/picker/import/status/${pickerImportId}`, {
+          credentials: 'include'
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          setPickerStatus(data.error || '取り込み状況の取得に失敗しました')
+          setImportingPicker(false)
+          setPickerImportId(null)
+          return
+        }
+        setPickerImportStatus(data)
+        if (data.status === 'done') {
+          const warning = data.warning ? ` / ${data.warning}` : ''
+          if (data.failed > 0) {
+            setPickerStatus(`取り込み完了: ${data.imported ?? 0} 件 (失敗 ${data.failed ?? 0} 件)${warning}`)
+          } else {
+            setPickerStatus(`取り込み完了: ${data.imported ?? 0} 件${warning}`)
+          }
+          setPickerSession(null)
+          setImportingPicker(false)
+          setPickerImportId(null)
+        }
+        if (data.status === 'failed') {
+          setPickerStatus(data.error || '取り込みに失敗しました')
+          setImportingPicker(false)
+          setPickerImportId(null)
+        }
+      } catch {
+        setPickerStatus('取り込み状況の取得に失敗しました')
+        setImportingPicker(false)
+        setPickerImportId(null)
+      }
+    }
+
+    const timer = setInterval(poll, 2000)
+    poll()
+    return () => {
+      stopped = true
+      clearInterval(timer)
+    }
+  }, [pickerImportId, authenticated])
+
   return (
     <div className="page">
       <header className="hero">
@@ -380,6 +446,21 @@ export default function App() {
             {importingPicker ? '取り込み中...' : '写真を選択する'}
           </button>
           {pickerStatus ? <div className="status">{pickerStatus}</div> : null}
+          {pickerImportStatus ? (
+            <div className="progress">
+              <progress
+                value={pickerImportStatus.processed}
+                max={pickerImportStatus.total > 0 ? pickerImportStatus.total : 1}
+              />
+              <div className="progress-meta">
+                {pickerImportStatus.total > 0
+                  ? `残り ${
+                      pickerImportStatus.remaining ?? Math.max(pickerImportStatus.total - pickerImportStatus.processed, 0)
+                    } / 全 ${pickerImportStatus.total}`
+                  : '取り込み準備中...'}
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
 

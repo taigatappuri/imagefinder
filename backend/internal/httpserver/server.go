@@ -49,6 +49,7 @@ func NewServer(cfg config.Config, store *store.Store, auth *services.AuthService
 	mux.HandleFunc("/picker/session", s.handlePickerSession)
 	mux.HandleFunc("/picker/session/", s.handlePickerSessionDetail)
 	mux.HandleFunc("/picker/import", s.handlePickerImport)
+	mux.HandleFunc("/picker/import/status/", s.handlePickerImportStatus)
 	mux.HandleFunc("/search", s.handleSearch)
 	mux.HandleFunc("/photos/", s.handlePhotoRoutes)
 	return s.withCORS(s.withLogging(mux))
@@ -303,9 +304,9 @@ func (s *Server) handlePickerImport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "セッション ID が不正です")
 		return
 	}
-	imported, err := s.Picker.ImportSession(r.Context(), userID, payload.SessionID)
+	status, err := s.Picker.StartImport(r.Context(), userID, payload.SessionID)
 	if err != nil {
-		log.Printf("Picker 取り込みに失敗: %v", err)
+		log.Printf("Picker 取り込み開始に失敗: %v", err)
 		if s.Config.AppEnv == "development" {
 			writeError(w, http.StatusBadRequest, "Picker からの取り込みに失敗しました: "+err.Error())
 			return
@@ -313,12 +314,54 @@ func (s *Server) handlePickerImport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Picker からの取り込みに失敗しました")
 		return
 	}
-	response := map[string]any{
-		"imported": imported.Imported,
-		"failed":   imported.Failed,
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"import_id": payload.SessionID,
+		"status":    status.Status,
+		"total":     status.Total,
+	})
+}
+
+func (s *Server) handlePickerImportStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET のみ対応しています")
+		return
 	}
-	if imported.LastError != nil && s.Config.AppEnv == "development" {
-		response["warning"] = imported.LastError.Error()
+	if s.Picker == nil || s.Picker.PickerClient == nil {
+		writeError(w, http.StatusBadRequest, "Google Photos Picker の設定が不足しています")
+		return
+	}
+	userID, err := s.requireUserID(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "認証が必要です")
+		return
+	}
+	sessionID := strings.TrimPrefix(r.URL.Path, "/picker/import/status/")
+	if strings.TrimSpace(sessionID) == "" {
+		writeError(w, http.StatusBadRequest, "セッション ID が不正です")
+		return
+	}
+	status, ok := s.Picker.GetImportStatus(userID, sessionID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "取り込み状況が見つかりません")
+		return
+	}
+	remaining := status.Total - status.Processed
+	if remaining < 0 {
+		remaining = 0
+	}
+	response := map[string]any{
+		"status":    status.Status,
+		"total":     status.Total,
+		"processed": status.Processed,
+		"imported":  status.Imported,
+		"failed":    status.Failed,
+		"remaining": remaining,
+	}
+	if status.Warning != "" && s.Config.AppEnv == "development" {
+		response["warning"] = status.Warning
+	}
+	if status.Error != "" && s.Config.AppEnv == "development" {
+		response["error"] = status.Error
 	}
 	writeJSON(w, http.StatusOK, response)
 }

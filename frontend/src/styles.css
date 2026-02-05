@@ -183,6 +183,24 @@ button:hover:not(:disabled) {
   color: #0c7d46;
 }
 
+.progress {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress progress {
+  width: 100%;
+  height: 12px;
+  accent-color: var(--accent);
+}
+
+.progress-meta {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+
 .job-status {
   display: flex;
   align-items: center;

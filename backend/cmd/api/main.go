@@ -83,6 +83,7 @@ func main() {
 		Captioner:     captioner,
 		Embedder:      embedder,
 		AuthService:   authService,
+		ImportTracker: services.NewPickerImportTracker(),
 		PageSize:      cfg.GooglePhotosPageSize,
 		MaxTextLength: cfg.MaxEmbeddingTextLength,
 	}
