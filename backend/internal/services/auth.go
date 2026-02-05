@@ -185,12 +185,17 @@ func (s *AuthService) EnsureAccessToken(ctx context.Context, userID uuid.UUID) (
 		if refreshed.RefreshToken != "" {
 			refreshToken = refreshed.RefreshToken
 		}
-		if err := s.Store.SaveTokens(ctx, userID, accessToken, refreshToken, expiresAt, refreshed.Scope); err != nil {
+		scope := refreshed.Scope
+		if scope == "" {
+			scope = tokens.Scopes
+		}
+		if err := s.Store.SaveTokens(ctx, userID, accessToken, refreshToken, expiresAt, scope); err != nil {
 			return models.OAuthToken{}, err
 		}
 		tokens.AccessToken = accessToken
 		tokens.ExpiresAt = expiresAt
 		tokens.RefreshToken = refreshToken
+		tokens.Scopes = scope
 	}
 	return tokens, nil
 }

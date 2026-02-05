@@ -26,6 +26,8 @@ type PickerService struct {
 	MaxTextLength int
 }
 
+var ErrPickerAuth = errors.New("認可が切れました。再ログインしてください")
+
 type PickerImportStatus struct {
 	UserID    uuid.UUID `json:"-"`
 	Status    string    `json:"status"`
@@ -113,7 +115,7 @@ func (p *PickerService) StartImport(ctx context.Context, userID uuid.UUID, sessi
 		return PickerImportStatus{}, err
 	}
 
-	items, err := p.collectMediaItems(ctx, tokens.AccessToken, sessionID)
+	items, accessToken, err := p.collectMediaItemsWithRetry(ctx, userID, tokens, sessionID)
 	if err != nil {
 		p.ImportTracker.Update(sessionID, func(status *PickerImportStatus) {
 			status.Status = "failed"
@@ -125,7 +127,7 @@ func (p *PickerService) StartImport(ctx context.Context, userID uuid.UUID, sessi
 		status.Total = len(items)
 	})
 
-	go p.runImport(userID, sessionID, tokens.AccessToken, items)
+	go p.runImport(userID, sessionID, accessToken, items)
 
 	status, _ := p.ImportTracker.Get(sessionID, userID)
 	return status, nil
@@ -158,6 +160,43 @@ func (p *PickerService) collectMediaItems(ctx context.Context, accessToken, sess
 		pageToken = nextToken
 	}
 	return items, nil
+}
+
+func (p *PickerService) collectMediaItemsWithRetry(ctx context.Context, userID uuid.UUID, tokens models.OAuthToken, sessionID string) ([]providers.PickedMediaItem, string, error) {
+	items, err := p.collectMediaItems(ctx, tokens.AccessToken, sessionID)
+	if err == nil {
+		return items, tokens.AccessToken, nil
+	}
+	if apiErr, ok := providers.AsPickerAPIError(err); ok && (apiErr.StatusCode == 401 || apiErr.StatusCode == 403) {
+		if tokens.RefreshToken == "" {
+			return nil, "", ErrPickerAuth
+		}
+		refreshed, err := p.AuthService.RefreshToken(ctx, tokens.RefreshToken)
+		if err != nil {
+			return nil, "", ErrPickerAuth
+		}
+		accessToken := refreshed.AccessToken
+		refreshToken := tokens.RefreshToken
+		if refreshed.RefreshToken != "" {
+			refreshToken = refreshed.RefreshToken
+		}
+		scope := refreshed.Scope
+		if scope == "" {
+			scope = tokens.Scopes
+		}
+		if err := p.Store.SaveTokens(ctx, userID, accessToken, refreshToken, refreshed.ExpiresAt(), scope); err != nil {
+			return nil, "", err
+		}
+		items, err = p.collectMediaItems(ctx, accessToken, sessionID)
+		if err != nil {
+			if apiErr, ok := providers.AsPickerAPIError(err); ok && (apiErr.StatusCode == 401 || apiErr.StatusCode == 403) {
+				return nil, "", ErrPickerAuth
+			}
+			return nil, "", err
+		}
+		return items, accessToken, nil
+	}
+	return nil, "", err
 }
 
 func (p *PickerService) runImport(userID uuid.UUID, sessionID, accessToken string, items []providers.PickedMediaItem) {

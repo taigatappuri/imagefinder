@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -44,6 +45,23 @@ type HTTPPhotosPickerClient struct {
 	Client     *http.Client
 	RetryMax   int
 	RetryDelay time.Duration
+}
+
+type PickerAPIError struct {
+	StatusCode int
+	Status     string
+}
+
+func (e *PickerAPIError) Error() string {
+	return fmt.Sprintf("Picker API エラー: %s", e.Status)
+}
+
+func AsPickerAPIError(err error) (*PickerAPIError, bool) {
+	var apiErr *PickerAPIError
+	if errors.As(err, &apiErr) {
+		return apiErr, true
+	}
+	return nil, false
 }
 
 func (c *HTTPPhotosPickerClient) CreateSession(ctx context.Context, accessToken string) (PickerSession, error) {
@@ -149,10 +167,10 @@ func (c *HTTPPhotosPickerClient) doJSON(ctx context.Context, method, endpoint, a
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-			return retry.MarkRetryable(fmt.Errorf("Picker API エラー: %s", resp.Status))
+			return retry.MarkRetryable(&PickerAPIError{StatusCode: resp.StatusCode, Status: resp.Status})
 		}
 		if resp.StatusCode >= 300 {
-			return fmt.Errorf("Picker API エラー: %s", resp.Status)
+			return &PickerAPIError{StatusCode: resp.StatusCode, Status: resp.Status}
 		}
 		if out == nil {
 			return nil

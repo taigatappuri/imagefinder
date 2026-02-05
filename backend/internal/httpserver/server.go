@@ -307,6 +307,10 @@ func (s *Server) handlePickerImport(w http.ResponseWriter, r *http.Request) {
 	status, err := s.Picker.StartImport(r.Context(), userID, payload.SessionID)
 	if err != nil {
 		log.Printf("Picker 取り込み開始に失敗: %v", err)
+		if errors.Is(err, services.ErrPickerAuth) {
+			writeError(w, http.StatusUnauthorized, err.Error())
+			return
+		}
 		if s.Config.AppEnv == "development" {
 			writeError(w, http.StatusBadRequest, "Picker からの取り込みに失敗しました: "+err.Error())
 			return
