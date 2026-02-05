@@ -195,16 +195,17 @@ type SearchFilters struct {
 }
 
 type SearchResult struct {
-	ID        uuid.UUID  `json:"id"`
-	BaseURL   string     `json:"base_url"`
-	CreatedAt *time.Time `json:"created_time"`
-	Location  *string    `json:"location"`
-	Score     float32    `json:"score"`
+	ID            uuid.UUID  `json:"id"`
+	GoogleMediaID string     `json:"google_media_id"`
+	BaseURL       string     `json:"base_url"`
+	CreatedAt     *time.Time `json:"created_time"`
+	Location      *string    `json:"location"`
+	Score         float32    `json:"score"`
 }
 
 func (s *Store) SearchPhotos(ctx context.Context, userID uuid.UUID, embedding []float32, filters SearchFilters, limit int) ([]SearchResult, error) {
 	vector := pgvector.NewVector(embedding)
-	query := "SELECT id, base_url, created_time, location, 1 - (embedding <=> $1) AS score FROM photos WHERE user_id=$2"
+	query := "SELECT id, google_media_id, base_url, created_time, location, 1 - (embedding <=> $1) AS score FROM photos WHERE user_id=$2"
 	args := []any{vector, userID}
 	index := 3
 	if filters.From != nil {
@@ -237,7 +238,7 @@ func (s *Store) SearchPhotos(ctx context.Context, userID uuid.UUID, embedding []
 		results := []SearchResult{}
 		for rows.Next() {
 			var item SearchResult
-			if err := rows.Scan(&item.ID, &item.BaseURL, &item.CreatedAt, &item.Location, &item.Score); err != nil {
+			if err := rows.Scan(&item.ID, &item.GoogleMediaID, &item.BaseURL, &item.CreatedAt, &item.Location, &item.Score); err != nil {
 				return nil, err
 			}
 			results = append(results, item)

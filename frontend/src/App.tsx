@@ -11,6 +11,7 @@ type Job = {
 
 type SearchItem = {
   id: string
+  google_media_id?: string
   base_url: string
   created_time?: string | null
   location?: string | null
@@ -551,7 +552,16 @@ export default function App() {
                       <span className="label">場所</span>
                       <span>{item.location || '-'}</span>
                     </div>
-                    <a className="link" href={item.base_url} target="_blank" rel="noreferrer">
+                    <a
+                      className="link"
+                      href={
+                        item.google_media_id
+                          ? `https://photos.google.com/photo/${item.google_media_id}`
+                          : item.base_url
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       Google Photos を開く
                     </a>
                   </div>

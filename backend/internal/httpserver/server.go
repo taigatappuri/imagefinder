@@ -478,6 +478,7 @@ func (s *Server) handlePhotoDetail(w http.ResponseWriter, r *http.Request, id st
 	}
 	response := struct {
 		ID          uuid.UUID  `json:"id"`
+		GoogleID    string     `json:"google_media_id"`
 		BaseURL     string     `json:"base_url"`
 		CreatedTime *time.Time `json:"created_time"`
 		Location    *string    `json:"location"`
@@ -485,6 +486,7 @@ func (s *Server) handlePhotoDetail(w http.ResponseWriter, r *http.Request, id st
 		Caption     *string    `json:"caption"`
 	}{
 		ID:          photo.ID,
+		GoogleID:    photo.GoogleMediaID,
 		BaseURL:     photo.BaseURL,
 		CreatedTime: photo.CreatedTime,
 		Location:    photo.Location,
