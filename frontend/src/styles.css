@@ -275,6 +275,17 @@ button:hover:not(:disabled) {
   font-weight: 600;
 }
 
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
 .empty {
   padding: 16px;
   border-radius: 16px;

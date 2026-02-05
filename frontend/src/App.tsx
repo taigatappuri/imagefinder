@@ -552,18 +552,21 @@ export default function App() {
                       <span className="label">場所</span>
                       <span>{item.location || '-'}</span>
                     </div>
-                    <a
-                      className="link"
-                      href={
-                        item.google_media_id
-                          ? `https://photos.google.com/photo/${item.google_media_id}`
-                          : item.base_url
-                      }
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Google Photos を開く
-                    </a>
+                    <div className="links">
+                      <a className="link" href={`${API_BASE}/photos/${item.id}/view`} target="_blank" rel="noreferrer">
+                        画像を開く
+                      </a>
+                      {item.google_media_id ? (
+                        <a
+                          className="link"
+                          href={`https://photos.google.com/lr/photo/${item.google_media_id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Google Photos を開く
+                        </a>
+                      ) : null}
+                    </div>
                   </div>
                 </article>
               ))}

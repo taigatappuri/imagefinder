@@ -3,9 +3,12 @@ package httpserver
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -453,6 +456,11 @@ func (s *Server) handlePhotoRoutes(w http.ResponseWriter, r *http.Request) {
 		s.handlePhotoThumbnail(w, r, id)
 		return
 	}
+	if strings.HasSuffix(path, "/view") {
+		id := strings.TrimSuffix(path, "/view")
+		s.handlePhotoView(w, r, id)
+		return
+	}
 	s.handlePhotoDetail(w, r, path)
 }
 
@@ -525,7 +533,8 @@ func (s *Server) handlePhotoThumbnail(w http.ResponseWriter, r *http.Request, id
 		writeError(w, http.StatusInternalServerError, "アクセストークンの取得に失敗しました")
 		return
 	}
-	thumbURL := buildThumbnailURL(photo.BaseURL)
+	size := parseThumbnailSize(r.URL.Query().Get("size"))
+	thumbURL := buildThumbnailURL(photo.BaseURL, size)
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, thumbURL, nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "サムネイル取得に失敗しました")
@@ -549,13 +558,88 @@ func (s *Server) handlePhotoThumbnail(w http.ResponseWriter, r *http.Request, id
 	io.Copy(w, resp.Body)
 }
 
-func buildThumbnailURL(base string) string {
+func buildThumbnailURL(base string, size int) string {
+	if size <= 0 {
+		size = 600
+	}
 	if strings.Contains(base, "googleusercontent") || strings.Contains(base, "photoslibrary") || strings.Contains(base, "googleapis") {
-		return base + "=w600-h600"
+		return base + fmt.Sprintf("=w%d-h%d", size, size)
 	}
 	return base
 }
 
+func parseThumbnailSize(raw string) int {
+	if strings.TrimSpace(raw) == "" {
+		return 600
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		return 600
+	}
+	if parsed < 100 {
+		return 100
+	}
+	if parsed > 3000 {
+		return 3000
+	}
+	return parsed
+}
+
+func (s *Server) handlePhotoView(w http.ResponseWriter, r *http.Request, id string) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET のみ対応しています")
+		return
+	}
+	userID, err := s.requireUserID(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "認証が必要です")
+		return
+	}
+	photoID, err := uuid.Parse(id)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "ID が不正です")
+		return
+	}
+	photo, err := s.Store.GetPhotoByID(r.Context(), userID, photoID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "写真が見つかりません")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "写真の取得に失敗しました")
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	created := "-"
+	if photo.CreatedTime != nil {
+		created = photo.CreatedTime.Format("2006-01-02 15:04")
+	}
+	location := "-"
+	if photo.Location != nil && strings.TrimSpace(*photo.Location) != "" {
+		location = *photo.Location
+	}
+	caption := ""
+	if photo.Caption != nil {
+		caption = *photo.Caption
+	}
+	googleLink := ""
+	if strings.TrimSpace(photo.GoogleMediaID) != "" {
+		googleLink = "https://photos.google.com/lr/photo/" + photo.GoogleMediaID
+	}
+	fmt.Fprintf(w, "<!doctype html><html><head><meta charset=\"utf-8\"><title>Photo</title>")
+	fmt.Fprintf(w, "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />")
+	fmt.Fprintf(w, "<style>body{font-family:system-ui, sans-serif;background:#f6f5f2;color:#1a1a1a;margin:0;padding:24px;} .card{max-width:920px;margin:0 auto;background:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,0.08);padding:20px;} img{width:100%%;height:auto;border-radius:12px;} .meta{margin-top:12px;font-size:14px;color:#555;} .meta p{margin:4px 0;} a{color:#d34727;}</style>")
+	fmt.Fprintf(w, "</head><body><div class=\"card\">")
+	fmt.Fprintf(w, "<img src=\"/photos/%s/thumbnail?size=1600\" alt=\"photo\" />", id)
+	fmt.Fprintf(w, "<div class=\"meta\"><p>日時: %s</p><p>場所: %s</p>", created, location)
+	if caption != "" {
+		fmt.Fprintf(w, "<p>説明: %s</p>", html.EscapeString(caption))
+	}
+	if googleLink != "" {
+		fmt.Fprintf(w, "<p><a href=\"%s\" target=\"_blank\" rel=\"noreferrer\">Google Photos を開く</a></p>", googleLink)
+	}
+	fmt.Fprintf(w, "</div></div></body></html>")
+}
 func (s *Server) requireUserID(r *http.Request) (uuid.UUID, error) {
 	value, err := s.Session.ParseUserID(r)
 	if err != nil {
