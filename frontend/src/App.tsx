@@ -237,6 +237,10 @@ export default function App() {
   }
 
   const startPicker = async () => {
+    if (!isPickerMode) {
+      setPickerStatus('Picker モードではありません。GOOGLE_PHOTOS_MODE を picker にして再ログインしてください。')
+      return
+    }
     setPickerStatus('Picker セッションを作成しています...')
     try {
       const res = await fetch(`${API_BASE}/picker/session`, {
@@ -468,7 +472,11 @@ export default function App() {
           <p>Picker で写真を選び、そのままインデックスに追加します。</p>
         </div>
         <div className="panel-body">
-          <button className="secondary" onClick={startPicker} disabled={!authenticated || importingPicker}>
+          <button
+            className="secondary"
+            onClick={startPicker}
+            disabled={!authenticated || importingPicker || !isPickerMode}
+          >
             {importingPicker ? '取り込み中...' : '写真を選択する'}
           </button>
           {pickerStatus ? <div className="status">{pickerStatus}</div> : null}

@@ -14,6 +14,7 @@ import (
 
 	"imagefinder/internal/config"
 	"imagefinder/internal/jobs"
+	"imagefinder/internal/providers"
 	"imagefinder/internal/security"
 	"imagefinder/internal/services"
 	"imagefinder/internal/store"
@@ -221,6 +222,10 @@ func (s *Server) handlePickerSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "POST のみ対応しています")
 		return
 	}
+	if s.Config.GooglePhotosMode != "picker" {
+		writeError(w, http.StatusBadRequest, "Picker モードではありません")
+		return
+	}
 	if s.Picker == nil || s.Picker.PickerClient == nil {
 		writeError(w, http.StatusBadRequest, "Google Photos Picker の設定が不足しています")
 		return
@@ -232,6 +237,17 @@ func (s *Server) handlePickerSession(w http.ResponseWriter, r *http.Request) {
 	}
 	session, err := s.Picker.CreateSession(r.Context(), userID)
 	if err != nil {
+		log.Printf("Picker セッション作成に失敗: %v", err)
+		if apiErr, ok := providers.AsPickerAPIError(err); ok {
+			if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
+				writeError(w, http.StatusUnauthorized, "Picker の権限が不足しています。再ログインしてください")
+				return
+			}
+		}
+		if s.Config.AppEnv == "development" {
+			writeError(w, http.StatusBadRequest, "Picker セッションの作成に失敗しました: "+err.Error())
+			return
+		}
 		writeError(w, http.StatusBadRequest, "Picker セッションの作成に失敗しました")
 		return
 	}
