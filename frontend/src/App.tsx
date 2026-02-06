@@ -444,7 +444,8 @@ export default function App() {
         <div className="panel-body">
           {isPickerMode ? (
             <div className="status">
-              Picker モードのため全件インポートは利用できません。下の「写真を選択する」から取り込みしてください。
+              Picker モードのため全件インポートは利用できません。全件インポートを使う場合は
+              GOOGLE_PHOTOS_MODE=library と photoslibrary.readonly スコープを設定して再ログインしてください。
             </div>
           ) : (
             <>
