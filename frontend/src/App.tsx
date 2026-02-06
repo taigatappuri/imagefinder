@@ -197,6 +197,30 @@ export default function App() {
     }
   }
 
+  const startFullImport = async () => {
+    if (isPickerMode) {
+      setStatusMessage(
+        'Picker モードでは Google Photos 全件インポートは利用できません。GOOGLE_PHOTOS_MODE を picker 以外にし、photoslibrary 読み取りスコープを設定してください。'
+      )
+      return
+    }
+    setStatusMessage('Google Photos の未取り込み写真をインデックスに追加します')
+    try {
+      const res = await fetch(`${API_BASE}/index/update`, {
+        method: 'POST',
+        credentials: 'include'
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setStatusMessage(data.error || 'インデックス開始に失敗しました')
+        return
+      }
+      setStatusMessage('ジョブを作成しました')
+    } catch {
+      setStatusMessage('インデックス開始に失敗しました')
+    }
+  }
+
   const parseDurationToMs = (value?: string | null) => {
     if (!value) return 3000
     const trimmed = value.trim()
@@ -414,18 +438,18 @@ export default function App() {
 
       <section className="panel">
         <div className="panel-header">
-          <h2>インデックス更新</h2>
-          <p>Google Photos の情報を取得し、検索用に準備します。</p>
+          <h2>全件インポート</h2>
+          <p>Google Photos の未取り込み写真を取得してインデックスに追加します。</p>
         </div>
         <div className="panel-body">
           {isPickerMode ? (
             <div className="status">
-              Picker モードのため全件インデックス更新は利用できません。下の「写真を選択する」から取り込みしてください。
+              Picker モードのため全件インポートは利用できません。下の「写真を選択する」から取り込みしてください。
             </div>
           ) : (
             <>
-              <button className="secondary" onClick={startIndex} disabled={!authenticated}>
-                インデックスを開始
+              <button className="secondary" onClick={startFullImport} disabled={!authenticated}>
+                未取り込みを追加
               </button>
               <div className="job-status">
                 <span>進捗:</span>

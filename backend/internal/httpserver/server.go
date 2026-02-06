@@ -173,7 +173,7 @@ func (s *Server) handleIndexUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.Config.GooglePhotosMode == "picker" {
-		writeError(w, http.StatusBadRequest, "Google Photos Picker を使用してください")
+		writeError(w, http.StatusBadRequest, "Picker モードでは全件インポートは利用できません")
 		return
 	}
 	userID, err := s.requireUserID(r)
