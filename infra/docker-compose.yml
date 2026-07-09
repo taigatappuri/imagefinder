@@ -53,8 +53,8 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-text-embedding-3-small}
       GEMINI_MODE: ${GEMINI_MODE:-mock}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_API_ENDPOINT: ${GEMINI_API_ENDPOINT:-https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_API_ENDPOINT: ${GEMINI_API_ENDPOINT:-https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
       MAX_SEARCH_LIMIT: ${MAX_SEARCH_LIMIT:-30}
       MAX_QUERY_LENGTH: ${MAX_QUERY_LENGTH:-200}
@@ -108,8 +108,8 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-text-embedding-3-small}
       GEMINI_MODE: ${GEMINI_MODE:-mock}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_API_ENDPOINT: ${GEMINI_API_ENDPOINT:-https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_API_ENDPOINT: ${GEMINI_API_ENDPOINT:-https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
       MAX_SEARCH_LIMIT: ${MAX_SEARCH_LIMIT:-30}
       MAX_QUERY_LENGTH: ${MAX_QUERY_LENGTH:-200}

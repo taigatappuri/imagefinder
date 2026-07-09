@@ -203,6 +203,7 @@ cython_debug/
 node_modules/
 frontend/dist/
 frontend/.env
+*.tsbuildinfo
 
 # Go / Backend
 backend/.env
@@ -213,6 +214,9 @@ backend/bin/
 .DS_Store
 .cursorignore
 .cursorindexingignore
+.aegis/
+.agents/
+update_history/
 
 # Marimo
 marimo/_static/
